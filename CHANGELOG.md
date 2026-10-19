@@ -39,6 +39,14 @@ All notable changes to this project are documented here. The format follows
   oversized payloads, missing compression, duplicate calls, sequential API chains, dominant
   critical-path requests, redirects, failing routes and endpoints, page weight, request count,
   third-party weight, JavaScript errors, and static assets without long-lived caching.
+- Stress testing (`--stress`): closed-loop virtual users replay each measured route's
+  same-origin GET hops (document, then API calls in their real dependency order) across rising
+  concurrency stages. Reports per-stage and per-hop latency distributions, throughput, errors,
+  and a per-second timeline; detects the latency knee (and the hop that degrades most), the
+  throughput plateau, and the breaking point. Safe by default: targets must resolve to loopback
+  or private addresses unless `--allow-remote` is passed, only GET requests are sent, a circuit
+  breaker stops the run when errors exceed `stress.maxErrorRate`, Ctrl+C stops gracefully, and
+  requests carry an identifying User-Agent. Results in `stress/stress.json`.
 - Configurable budgets (`perf.budgets`), `summary.json`, `endpoints.json`, `bottlenecks.json`,
   `--json` (summary on stdout), and `--fail-on warning|critical` (exit code 1, reports still
   written).
