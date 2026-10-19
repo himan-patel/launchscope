@@ -25,6 +25,10 @@ All notable changes to this project are documented here. The format follows
   endpoints; `regression` findings (10% and a per-metric minimum) that count toward `--fail-on`;
   a "Compared with baseline" report section and Markdown table.
 
+- W3C Trace Context: `--trace-context` gives each measured page load its own trace ID and sends a
+  sampled `traceparent` header (fresh span per request) to the target origin only; `--trace-url`
+  (or `perf.traceContext.urlTemplate`) links each load's trace from the report.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

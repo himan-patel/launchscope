@@ -1,5 +1,6 @@
 import { access } from 'node:fs/promises';
 import { ExitCode, LaunchScopeError, UsageError } from '../../../core/errors.js';
+import { traceparentFor } from './trace-context.js';
 
 /**
  * Network presets, modeled on common lab profiles:
@@ -77,10 +78,17 @@ export async function launchBrowser(settings) {
  * @param {Browser} browser
  * @param {typeof import('playwright').devices} devices
  * @param {import('../settings.js').PerfSettings} settings
- * @param {{ harPath?: string }} [options] Record a HAR (bodies omitted) written on context close.
+ * @param {{ harPath?: string, traces?: import('./trace-context.js').TraceRegistry }} [options]
+ *   `harPath` records a HAR (bodies omitted) written on context close; `traces` adds a
+ *   `traceparent` header to target-origin requests.
  * @returns {Promise<BrowserContext>}
  */
-export async function createMeasurementContext(browser, devices, settings, { harPath } = {}) {
+export async function createMeasurementContext(
+  browser,
+  devices,
+  settings,
+  { harPath, traces } = {},
+) {
   if (settings.storageStatePath) await assertReadable(settings.storageStatePath);
 
   const device = settings.device === 'mobile' ? devices[MOBILE_DEVICE] : undefined;
@@ -92,17 +100,34 @@ export async function createMeasurementContext(browser, devices, settings, { har
   });
 
   const headerEntries = Object.entries(settings.headers);
-  if (headerEntries.length > 0) {
+  if (headerEntries.length > 0 || traces) {
     const targetOrigin = settings.targetUrl.origin;
     await context.route(
       (url) => url.origin === targetOrigin,
-      (route) =>
-        route.continue({
-          headers: { ...route.request().headers(), ...Object.fromEntries(headerEntries) },
-        }),
+      (route) => {
+        const request = route.request();
+        /** @type {Record<string, string>} */
+        const headers = { ...request.headers(), ...Object.fromEntries(headerEntries) };
+        const traceId = traces?.traceIdFor(safePage(request));
+        if (traceId) headers.traceparent = traceparentFor(traceId);
+        return route.continue({ headers });
+      },
     );
   }
   return context;
+}
+
+/**
+ * @param {import('playwright').Request} request
+ * @returns {import('playwright').Page | null}
+ */
+function safePage(request) {
+  try {
+    return request.frame().page();
+  } catch {
+    // Service worker and some preflight requests have no frame.
+    return null;
+  }
 }
 
 /**

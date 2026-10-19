@@ -11,6 +11,7 @@ import {
   stressCharts,
 } from './charts.js';
 import { format as formatMetric } from '../analyze/compare.js';
+import { traceUrl } from '../capture/trace-context.js';
 import { escapeHtml as e } from './escape.js';
 import { CHART_CSS, inlineSvg } from './svg.js';
 
@@ -62,7 +63,7 @@ export function renderHtmlReport({ summary, details }) {
 <main id="main">
 ${renderSummary(summary, routes)}
 ${renderFindings(findings)}
-${renderRoutes(routes, details)}
+${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
 ${renderEndpoints(endpoints)}
 ${stress ? renderStress(stress) : ''}
 ${summary.comparison ? renderComparison(summary.comparison) : ''}
@@ -184,8 +185,9 @@ function renderFindings(findings) {
 /**
  * @param {import('../analyze/routes.js').RouteSummary[]} routes
  * @param {Map<string, RouteDetail>} details
+ * @param {string | undefined} traceUrlTemplate
  */
-function renderRoutes(routes, details) {
+function renderRoutes(routes, details, traceUrlTemplate) {
   const rows = routes
     .map((route) => {
       const m = route.metrics;
@@ -215,15 +217,16 @@ function renderRoutes(routes, details) {
 <thead><tr><th scope="col">Route</th><th scope="col">Status</th><th scope="col">TTFB</th><th scope="col">FCP</th><th scope="col">LCP</th><th scope="col">LCP p95</th><th scope="col">CLS</th><th scope="col">TBT</th><th scope="col">Requests</th><th scope="col">Transferred</th><th scope="col">API calls</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 ${chart ? `<figure class="chart">${inlineSvg(chart)}<figcaption><details><summary>Show data</summary><div class="table-wrap"><table><caption>Bytes by resource type</caption><thead><tr><th scope="col">Route</th><th scope="col">Type</th><th scope="col">Requests</th><th scope="col">Transferred</th><th scope="col">Decoded</th></tr></thead><tbody>${chartData}</tbody></table></div></details></figcaption></figure>` : ''}
-${routes.map((route) => renderRouteDetail(route, details.get(route.slug))).join('')}
+${routes.map((route) => renderRouteDetail(route, details.get(route.slug), traceUrlTemplate)).join('')}
 </section>`;
 }
 
 /**
  * @param {import('../analyze/routes.js').RouteSummary} route
  * @param {RouteDetail | undefined} detail
+ * @param {string | undefined} traceUrlTemplate
  */
-function renderRouteDetail(route, detail) {
+function renderRouteDetail(route, detail, traceUrlTemplate) {
   const label = routeLabel(route.url);
   const base = `routes/${encodeURIComponent(route.slug)}`;
   if (route.error || !detail?.trace || !detail.load) {
@@ -282,6 +285,7 @@ ${chains ? `<h4>Sequential API chains <span class="muted">(inferred from timing 
 <figure class="chart">${inlineSvg(routeWaterfall({ routeLabel: label, trace, load }))}</figure>
 <details><summary>Hop tree</summary><pre>${e(renderTraceTree(trace).join('\n'))}</pre></details>
 <p class="files">Files: ${files}</p>
+${renderTraces(route.traces, traceUrlTemplate)}
 </article>`;
 }
 
@@ -594,4 +598,23 @@ ${routeRows ? `<div class="table-wrap"><table><caption>Routes with significant c
 ${endpointRows ? `<div class="table-wrap"><table><caption>Endpoints with significant changes</caption><thead><tr><th scope="col">Endpoint</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Size</th></tr></thead><tbody>${endpointRows}</tbody></table></div>` : '<p>No significant endpoint changes.</p>'}
 ${list('New routes', comparison.newRoutes)}${list('Routes no longer measured', comparison.missingRoutes)}${list('New endpoints', comparison.newEndpoints)}${list('Endpoints no longer called', comparison.missingEndpoints)}
 </section>`;
+}
+
+/**
+ * @param {Array<{ run: number, cache: string, traceId: string }> | undefined} traces
+ * @param {string | undefined} template
+ * @returns {string}
+ */
+function renderTraces(traces, template) {
+  if (!traces || traces.length === 0) return '';
+  const items = traces
+    .map((trace) => {
+      const label = `${trace.cache} run ${trace.run}`;
+      const link = traceUrl(template, trace.traceId);
+      return link
+        ? `<a href="${e(link)}" rel="noopener noreferrer">${e(label)}</a>`
+        : `${e(label)} <code>${e(trace.traceId)}</code>`;
+    })
+    .join(' · ');
+  return `<p class="files">Backend traces: ${items}</p>`;
 }

@@ -48,6 +48,7 @@ function load(url, { cache = 'cold', error = null, run = 1 } = {}) {
     links: [],
     sockets: [],
     error,
+    traceId: null,
   };
 }
 

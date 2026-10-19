@@ -1,5 +1,6 @@
 import { createMeasurementContext } from './capture/browser.js';
 import { capturePageLoad } from './capture/page-capture.js';
+import { TraceRegistry } from './capture/trace-context.js';
 import { redactHarFile } from './report/har.js';
 
 /**
@@ -29,12 +30,14 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
   let screenshot = null;
   /** @type {string[]} */
   let links = [];
+  const traces = settings.traceContext.enabled ? new TraceRegistry() : undefined;
 
   for (let run = 1; run <= settings.runs; run += 1) {
     const first = run === 1;
     const recordHarTo = first ? harPath : undefined;
     const context = await createMeasurementContext(browser, devices, settings, {
       harPath: recordHarTo,
+      traces,
     });
     try {
       const result = await capturePageLoad({
@@ -46,6 +49,7 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
         collectLinks: first,
         inspectJson: true,
         screenshot: first,
+        traces,
       });
       loads.push(result.load);
       if (first) {
@@ -59,11 +63,18 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
   }
 
   if (settings.warmRuns > 0) {
-    const context = await createMeasurementContext(browser, devices, settings);
+    const context = await createMeasurementContext(browser, devices, settings, { traces });
     try {
       await capturePageLoad({ context, url, settings, cache: 'warm', run: 0 });
       for (let run = 1; run <= settings.warmRuns; run += 1) {
-        const result = await capturePageLoad({ context, url, settings, cache: 'warm', run });
+        const result = await capturePageLoad({
+          context,
+          url,
+          settings,
+          cache: 'warm',
+          run,
+          traces,
+        });
         loads.push(result.load);
       }
     } finally {

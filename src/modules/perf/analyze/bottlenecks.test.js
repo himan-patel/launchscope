@@ -48,6 +48,7 @@ function route(overrides = {}) {
       eventStreams: [],
       iframes: { count: 0, requests: 0, transferBytes: 0, origins: [] },
     },
+    traces: [],
     ...overrides,
   };
 }

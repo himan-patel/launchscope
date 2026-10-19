@@ -46,6 +46,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {boolean} dryRun Resolve settings and create the run directory without a browser.
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
+ * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
  * @property {StressSettings} stress
  */
 
@@ -114,6 +115,7 @@ const CONFIG_KEYS = new Set([
   'stress',
   'budgets',
   'baseline',
+  'traceContext',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -146,6 +148,8 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {boolean} [json]
  * @property {boolean} [dryRun]
  * @property {string} [baseline]
+ * @property {boolean} [traceContext]
+ * @property {string} [traceUrl]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -220,6 +224,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     dryRun: cli.dryRun ?? false,
     budgets: resolveBudgets(section.budgets),
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
+    traceContext: resolveTraceContext(cli, section.traceContext),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -512,4 +517,62 @@ function resolveBaseline(value, cwd) {
     throw new UsageError('--baseline must be "latest" or a path to a previous run.');
   }
   return value === 'latest' ? 'latest' : resolve(cwd, value);
+}
+
+/**
+ * `--trace-context`, `--trace-url <template>`, or config `traceContext: true | { urlTemplate }`.
+ * A URL template enables trace context on its own.
+ *
+ * @param {PerfCliOptions} cli
+ * @param {unknown} config
+ * @returns {{ enabled: boolean, urlTemplate: string | undefined }}
+ */
+function resolveTraceContext(cli, config) {
+  /** @type {string | undefined} */
+  let urlTemplate;
+  let enabled = false;
+  if (config !== undefined) {
+    if (typeof config === 'boolean') {
+      enabled = config;
+    } else if (typeof config === 'object' && config !== null && !Array.isArray(config)) {
+      const unknown = Object.keys(config).filter((key) => key !== 'urlTemplate');
+      if (unknown.length > 0) {
+        throw new UsageError(
+          `Unknown key(s) in config "perf.traceContext": ${unknown.join(', ')}.`,
+        );
+      }
+      enabled = true;
+      urlTemplate = optionalString(
+        /** @type {{ urlTemplate?: unknown }} */ (config).urlTemplate,
+        'traceContext.urlTemplate',
+      );
+    } else {
+      throw new UsageError(
+        'Config "perf.traceContext" must be true/false or { "urlTemplate": "…" }.',
+      );
+    }
+  }
+  if (cli.traceContext !== undefined) enabled = cli.traceContext;
+  if (cli.traceUrl !== undefined) {
+    urlTemplate = cli.traceUrl;
+    enabled = true;
+  }
+  if (urlTemplate !== undefined) {
+    let url;
+    try {
+      url = new URL(urlTemplate.replaceAll('{traceId}', '0'));
+    } catch {
+      url = null;
+    }
+    if (
+      !url ||
+      (url.protocol !== 'https:' && url.protocol !== 'http:') ||
+      !urlTemplate.includes('{traceId}')
+    ) {
+      throw new UsageError('--trace-url must be an http(s) URL containing {traceId}.', {
+        hint: 'Example: https://tracing.example.com/trace/{traceId}',
+      });
+    }
+  }
+  return { enabled, urlTemplate };
 }

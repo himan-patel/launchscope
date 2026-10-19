@@ -111,6 +111,7 @@ const SLOW_CONCURRENCY = 4;
  * @typedef {object} FixtureServer
  * @property {string} origin e.g. http://127.0.0.1:54321
  * @property {Map<string, number>} hits Request counts by pathname.
+ * @property {Array<{ path: string, traceparent: string }>} traceparents Every traceparent header received.
  * @property {(ms: number) => void} setSlowDelay Changes how long /api/slow takes (default 250 ms).
  * @property {() => Promise<void>} close
  */
@@ -123,6 +124,8 @@ export async function startFixtureServer() {
   const hits = new Map();
   let slowActive = 0;
   let slowDelayMs = 250;
+  /** @type {Array<{ path: string, traceparent: string }>} */
+  const traceparents = [];
   /** @type {Array<() => void>} */
   const slowQueue = [];
 
@@ -146,6 +149,8 @@ export async function startFixtureServer() {
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? '/', 'http://fixture');
     hits.set(url.pathname, (hits.get(url.pathname) ?? 0) + 1);
+    const traceparent = request.headers.traceparent;
+    if (typeof traceparent === 'string') traceparents.push({ path: url.pathname, traceparent });
 
     /**
      * @param {number} status
@@ -289,6 +294,7 @@ export async function startFixtureServer() {
   return {
     origin: `http://127.0.0.1:${address.port}`,
     hits,
+    traceparents,
     setSlowDelay: (ms) => {
       slowDelayMs = ms;
     },
