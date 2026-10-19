@@ -200,6 +200,22 @@ Each navigation runs `--runs` times in a fresh browser context. Findings: `slow-
 reloads the whole page in an app that otherwise routes client-side), and `navigation-failed`.
 Results are in the report's "Client-side navigations" section and `navigations.json`.
 
+### Compare browsers
+
+```sh
+npx playwright install firefox webkit      # once
+launchscope perf http://localhost:3000 --browsers chromium,firefox,webkit
+```
+
+Chromium is always the primary, fully detailed measurement (hop tracing, timing phases,
+throttling). With `--browsers`, every measured route is also loaded `--runs` times in Firefox
+and/or WebKit (Safari's engine), and the report's "Cross-browser" section compares load event,
+LCP, and errors per browser. Findings: `browser-failed` (loads in Chromium, not in another
+browser), `browser-errors` (exceptions or failed requests Chromium does not have), and
+`browser-slower` (load ≥ 1.5× and ≥ 500 ms slower than Chromium). Paint metrics a browser does not
+report show as "–"; network throttling and CPU slowdown apply to Chromium only. A browser that
+is not installed is skipped with a warning.
+
 ### Mobile and slow networks
 
 ```sh
@@ -280,6 +296,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 ├── endpoints.json      per-endpoint statistics
 ├── routes.json         measured routes and why other URLs were skipped
 ├── settings.json       the resolved settings (header values redacted)
+├── browsers.json       Firefox/WebKit results (with --browsers)
 ├── navigations.json    client-side navigations (with --spa)
 ├── repo.json           routes found in the repository and those needing routeParams
 ├── openapi.json        operations measured from the OpenAPI spec and why others were skipped
@@ -510,6 +527,7 @@ with `--config`). CLI flags override it. Strings may reference environment varia
     "warmRuns": 1,
     "spa": true,
     "device": "desktop",
+    "browsers": ["chromium", "firefox"],
     "throttle": "none",
     "timeout": "45s",
     "browserChannel": "chrome",

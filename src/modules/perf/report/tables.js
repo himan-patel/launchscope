@@ -250,6 +250,25 @@ export function summaryMarkdown(summary) {
       ),
     );
   }
+  if (summary.browsers && summary.browsers.length > 0) {
+    /** @type {import('../cross-browser-phase.js').BrowserResult[]} */
+    const browsers = summary.browsers;
+    const names = browsers.map((entry) => (entry.browser === 'firefox' ? 'Firefox' : 'WebKit'));
+    lines.push(
+      '',
+      '## Cross-browser',
+      '',
+      `| Route | Chromium load | ${names.map((name) => `${name} load`).join(' | ')} |`,
+      `| --- | ---: | ${names.map(() => '---:').join(' | ')} |`,
+      ...routes.map((route) => {
+        const cells = browsers.map((entry) => {
+          const match = entry.routes.find((candidate) => candidate.slug === route.slug);
+          return match?.error ? 'failed' : dur(match?.metrics.loadMs?.p50);
+        });
+        return `| ${md(routeLabel(route.url))} | ${dur(route.metrics.loadMs?.p50)} | ${cells.join(' | ')} |`;
+      }),
+    );
+  }
   if (summary.comparison) {
     /** @type {import('../analyze/compare.js').Comparison} */
     const comparison = summary.comparison;

@@ -52,6 +52,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
  * @property {boolean} spa Measure client-side navigations between measured routes.
  * @property {number} spaMax Maximum navigation pairs to measure.
+ * @property {Array<'chromium' | 'firefox' | 'webkit'>} browsers Browsers to load routes in; Chromium is always the primary.
  * @property {StressSettings} stress
  */
 
@@ -126,6 +127,7 @@ const CONFIG_KEYS = new Set([
   'routeParams',
   'spa',
   'spaMax',
+  'browsers',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -164,6 +166,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [repo]
  * @property {boolean} [spa]
  * @property {string} [spaMax]
+ * @property {string} [browsers]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -248,6 +251,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
       max: 100,
       fallback: 20,
     }),
+    browsers: parseBrowsers(cli.browsers ?? section.browsers),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -645,4 +649,34 @@ function parseRouteParams(value) {
     params[name] = String(example);
   }
   return params;
+}
+
+const BROWSERS = /** @type {const} */ (['chromium', 'firefox', 'webkit']);
+
+/**
+ * @param {unknown} value Comma-separated string or array.
+ * @returns {Array<'chromium' | 'firefox' | 'webkit'>} Always starts with chromium.
+ */
+function parseBrowsers(value) {
+  if (value === undefined) return ['chromium'];
+  const items =
+    typeof value === 'string'
+      ? value
+          .split(',')
+          .map((item) => item.trim().toLowerCase())
+          .filter(Boolean)
+      : Array.isArray(value)
+        ? value
+        : null;
+  if (!items || items.length === 0) {
+    throw new UsageError(
+      '--browsers must list chromium, firefox, and/or webkit, e.g. chromium,firefox.',
+    );
+  }
+  for (const item of items) {
+    if (!BROWSERS.includes(item)) {
+      throw new UsageError(`Unknown browser "${item}". Choose from: ${BROWSERS.join(', ')}.`);
+    }
+  }
+  return ['chromium', ...BROWSERS.filter((name) => name !== 'chromium' && items.includes(name))];
 }

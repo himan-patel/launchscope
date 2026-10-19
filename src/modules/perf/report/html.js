@@ -58,7 +58,7 @@ export function renderHtmlReport({ summary, details }) {
 <header class="top">
   <div class="brand">${LOGO}<div><p class="eyebrow">${e(BRAND.name)} performance report</p><h1>${e(host)}</h1></div></div>
   <p class="meta">${e(summary.target)} · ${e(formatDate(summary.startedAt))} · ${e(describeSettings(summary.settings))}</p>
-  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
+  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
 </header>
 <main id="main">
 ${renderSummary(summary, routes)}
@@ -66,6 +66,7 @@ ${renderFindings(findings)}
 ${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
 ${renderEndpoints(endpoints, summary.openapi)}
 ${summary.navigations ? renderNavigations(summary.navigations) : ''}
+${summary.browsers ? renderBrowsers(summary.browsers, routes) : ''}
 ${stress ? renderStress(stress) : ''}
 ${summary.comparison ? renderComparison(summary.comparison) : ''}
 ${renderMethod()}
@@ -672,5 +673,42 @@ function renderNavigations(navigations) {
 <thead><tr><th scope="col">Navigation</th><th scope="col">Kind</th><th scope="col">Duration</th><th scope="col">Duration p95</th><th scope="col">Network</th><th scope="col">Render</th><th scope="col">Requests</th><th scope="col">API calls</th><th scope="col">Transferred</th><th scope="col">Sequential API chain</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 <p class="files">Files: <a href="navigations.json">navigations.json</a></p>
+</section>`;
+}
+
+/**
+ * @param {import('../cross-browser-phase.js').BrowserResult[]} browsers
+ * @param {import('../analyze/routes.js').RouteSummary[]} chromium
+ * @returns {string}
+ */
+function renderBrowsers(browsers, chromium) {
+  const names = [
+    'Chromium',
+    ...browsers.map((entry) => (entry.browser === 'firefox' ? 'Firefox' : 'WebKit')),
+  ];
+  const cell = (/** @type {any} */ route) => {
+    if (!route) return '<td>–</td><td>–</td><td>–</td>';
+    if (route.error) return `<td colspan="3" class="bad">${e(route.error)}</td>`;
+    const errors = (route.pageErrors?.length ?? 0) + (route.failedRequests ?? 0);
+    return `<td>${ms(route.metrics.loadMs?.p50)}</td><td>${ms(route.metrics.lcpMs?.p50)}</td><td>${errors ? `<span class="bad">${num(errors)}</span>` : '0'}</td>`;
+  };
+  const rows = chromium
+    .map((route) => {
+      const others = browsers.map((entry) =>
+        entry.routes.find((candidate) => candidate.slug === route.slug),
+      );
+      return `<tr><th scope="row">${e(routeLabel(route.url))}</th>${cell(route)}${others.map(cell).join('')}</tr>`;
+    })
+    .join('');
+  const versions = browsers
+    .map((entry) => `${entry.browser === 'firefox' ? 'Firefox' : 'WebKit'} ${entry.version}`)
+    .join(', ');
+  return `<section id="browsers" aria-labelledby="browsers-h"><h2 id="browsers-h">Cross-browser</h2>
+<p class="lede">Each route loaded in ${e(versions)} with the same number of cold runs, compared with Chromium. Paint metrics a browser does not report show as –. Throttling and CPU slowdown apply to Chromium only.</p>
+<div class="table-wrap"><table><caption>Load event, LCP, and errors (page errors plus failed requests) per browser, medians</caption>
+<thead><tr><th scope="col" rowspan="2">Route</th>${names.map((name) => `<th scope="colgroup" colspan="3">${e(name)}</th>`).join('')}</tr>
+<tr>${names.map(() => '<th scope="col">Load</th><th scope="col">LCP</th><th scope="col">Errors</th>').join('')}</tr></thead>
+<tbody>${rows}</tbody></table></div>
+<p class="files">Files: <a href="browsers.json">browsers.json</a></p>
 </section>`;
 }

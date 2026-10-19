@@ -11,6 +11,7 @@ import { countBySeverity, RunAccumulator } from './analyze/index.js';
 import { runApiPhase } from './api-phase.js';
 import { discoverRepoRoutes } from './discover/repo.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
+import { runCrossBrowserPhase } from './cross-browser-phase.js';
 import { measureRoutes } from './measure-routes.js';
 import { runNavigationPhase } from './navigation-phase.js';
 import { writeReport } from './report/write-report.js';
@@ -137,6 +138,16 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
       ? await runNavigationPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
   const analysis = accumulator.finish(settings.budgets);
+  const crossBrowser = !signal.aborted
+    ? await runCrossBrowserPhase({
+        settings,
+        routes,
+        chromium: analysis.routes,
+        perfDirectory,
+        logger,
+        signal,
+      })
+    : null;
 
   const stress =
     settings.stress.enabled && !signal.aborted
@@ -160,6 +171,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     ...analysis.bottlenecks,
     ...(stress?.findings ?? []),
     ...(navigation?.findings ?? []),
+    ...(crossBrowser?.findings ?? []),
     ...(comparison ? regressionFindings(comparison) : []),
   ]);
   analysis.totals.findings = countBySeverity(analysis.bottlenecks);
@@ -178,6 +190,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
     navigations: navigation?.navigations ?? null,
+    browsers: crossBrowser?.browsers ?? null,
     comparison,
     openapi: api?.plan
       ? {
