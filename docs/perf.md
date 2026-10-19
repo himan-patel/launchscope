@@ -440,6 +440,14 @@ and endpoints. The full comparison is in `summary.json` under `comparison`.
 - **What you get per stage**: requests per second, latency percentiles, route replay time,
   errors with samples, a p95 per hop, and a per-second timeline.
 
+**Closed or open model.** By default (`--stress-mode closed`) stages are concurrent virtual users,
+and each user starts its next replay when the previous one finishes, so a slower server
+automatically receives less load. With `--stress-mode open`, stages are **arrival rates**
+(`--stress-rates 2,5,10,25`, replays started per second): replays start on schedule whether or
+not earlier ones finished, the way independent visitors arrive. When the server falls behind,
+work piles up: the report shows the peak number of replays in flight, the achieved start rate,
+and replays dropped once `stress.maxInFlight` (default 1000) are in flight.
+
 The analysis reads it like a capacity test:
 
 | Insight                | Meaning                                                                                                                                                       |
@@ -542,7 +550,10 @@ with `--config`). CLI flags override it. Strings may reference environment varia
       "timeout": "10s",
       "includeAssets": false,
       "allowRemote": false,
-      "maxErrorRate": 0.25
+      "maxErrorRate": 0.25,
+      "mode": "closed",
+      "rates": [2, 5, 10, 25],
+      "maxInFlight": 1000
     },
     "budgets": {
       "lcpMs": { "warning": 2000, "critical": 3500 },

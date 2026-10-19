@@ -19,6 +19,11 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {boolean} includeAssets Also replay same-origin scripts, styles, images, and fonts.
  * @property {boolean} allowRemote Permit targets that are not loopback or private addresses.
  * @property {number} maxErrorRate Abort the stress test once a stage exceeds this error ratio.
+ * @property {'closed' | 'open'} mode `closed`: virtual users wait for each response (stages are
+ *   concurrent users). `open`: route replays start at a fixed rate regardless of responses
+ *   (rates are replays per second).
+ * @property {number[]} rates Replays started per second, per stage (open mode), ascending.
+ * @property {number} maxInFlight Open mode: replays allowed in flight before new ones are dropped.
  */
 
 /**
@@ -136,6 +141,9 @@ const STRESS_CONFIG_KEYS = new Set([
   'includeAssets',
   'allowRemote',
   'maxErrorRate',
+  'mode',
+  'rates',
+  'maxInFlight',
 ]);
 
 /**
@@ -173,6 +181,8 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [stressTimeout]
  * @property {boolean} [stressIncludeAssets]
  * @property {boolean} [allowRemote]
+ * @property {string} [stressMode]
+ * @property {string} [stressRates]
  */
 
 /**
@@ -276,6 +286,18 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
         PERF_DEFAULTS.stress.allowRemote,
       ),
       maxErrorRate: parseRatio(stressSection.maxErrorRate, 'stress.maxErrorRate'),
+      mode: parseChoice(
+        cli.stressMode ?? stressSection.mode,
+        '--stress-mode',
+        STRESS_MODES,
+        'closed',
+      ),
+      rates: parseRates(cli.stressRates ?? stressSection.rates),
+      maxInFlight: parseInteger(stressSection.maxInFlight, 'stress.maxInFlight', {
+        min: 1,
+        max: 10_000,
+        fallback: 1000,
+      }),
     },
   };
 }
@@ -679,4 +701,35 @@ function parseBrowsers(value) {
     }
   }
   return ['chromium', ...BROWSERS.filter((name) => name !== 'chromium' && items.includes(name))];
+}
+
+const STRESS_MODES = /** @type {const} */ (['closed', 'open']);
+const DEFAULT_RATES = Object.freeze([1, 5, 10, 25, 50]);
+
+/**
+ * @param {unknown} value
+ * @returns {number[]} Strictly increasing replays per second (decimals allowed).
+ */
+function parseRates(value) {
+  if (value === undefined) return [...DEFAULT_RATES];
+  const items = typeof value === 'string' ? value.split(',').map((item) => item.trim()) : value;
+  if (!Array.isArray(items) || items.length === 0 || items.length > LIMITS.stressStages) {
+    throw new UsageError(
+      `Stress rates must be 1 to ${LIMITS.stressStages} replays per second, e.g. 2,5,10.`,
+    );
+  }
+  const rates = items.map((item) => {
+    const rate = typeof item === 'number' ? item : Number(item);
+    if (!Number.isFinite(rate) || rate <= 0 || rate > LIMITS.stressConcurrency) {
+      throw new UsageError(
+        `Each stress rate must be a number above 0 and at most ${LIMITS.stressConcurrency} (got "${item}").`,
+      );
+    }
+    return rate;
+  });
+  for (let index = 1; index < rates.length; index += 1) {
+    if (rates[index] <= rates[index - 1])
+      throw new UsageError('Stress rates must be strictly increasing, e.g. 2,5,10.');
+  }
+  return rates;
 }

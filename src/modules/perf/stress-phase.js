@@ -62,10 +62,13 @@ export async function runStressPhase({
     onStage: (stage) => {
       const icon = stage.errorRate > 0 ? paint.yellow('!') : paint.green('✔');
       logger.info(
-        `  ${icon} ${String(stage.concurrency).padStart(4)} users  ` +
+        `  ${icon} ${(stage.mode === 'open' ? `${stage.load}/s` : `${stage.load} users`).padStart(9)}  ` +
           paint.dim(
             `${stage.requestsPerSecond.toFixed(1)} req/s · p50 ${formatDuration(stage.latencyMs?.p50 ?? Number.NaN)} · ` +
-              `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%`,
+              `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%` +
+              (stage.mode === 'open'
+                ? ` · peak in flight ${stage.concurrency}${stage.dropped ? ` · dropped ${stage.dropped}` : ''}`
+                : ''),
           ),
       );
     },

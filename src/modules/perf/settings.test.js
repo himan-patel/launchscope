@@ -141,6 +141,9 @@ describe('resolvePerfSettings', () => {
       includeAssets: true,
       allowRemote: false,
       maxErrorRate: 0.2,
+      mode: 'closed',
+      rates: [1, 5, 10, 25, 50],
+      maxInFlight: 1000,
     });
     assert.throws(() => resolveWith({ cli: { stressStages: '10,5' } }), /strictly increasing/);
     assert.throws(() => resolveWith({ cli: { stressStages: '1,5000' } }), /from 1 to 1000/);
@@ -175,6 +178,27 @@ describe('trace context settings', () => {
     assert.throws(() => resolveWith({ cli: { traceUrl: 'https://t.test/trace' } }), /\{traceId\}/);
     assert.throws(() => resolveWith({ config: { traceContext: { url: 'x' } } }), /Unknown key/);
     assert.throws(() => resolveWith({ config: { traceContext: 'yes' } }), /true\/false/);
+  });
+});
+
+describe('open-model stress settings', () => {
+  it('parses mode, rates, and the in-flight cap', () => {
+    const settings = resolveWith({
+      cli: { stressMode: 'open', stressRates: '0.5, 2, 8' },
+      config: { stress: { maxInFlight: 50 } },
+    });
+    assert.equal(settings.stress.mode, 'open');
+    assert.deepEqual(settings.stress.rates, [0.5, 2, 8]);
+    assert.equal(settings.stress.maxInFlight, 50);
+  });
+
+  it('rejects bad rates', () => {
+    assert.throws(() => resolveWith({ cli: { stressRates: '5,2' } }), /strictly increasing/);
+    assert.throws(() => resolveWith({ cli: { stressRates: '0' } }), /above 0/);
+    assert.throws(
+      () => resolveWith({ config: { stress: { mode: 'burst' } } }),
+      /--stress-mode must be one of/,
+    );
   });
 });
 

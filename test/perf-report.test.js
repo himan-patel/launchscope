@@ -130,7 +130,10 @@ describe('launchscope perf report directory (fixture app, real Chromium)', () =>
     assert.match(routesCsv, /^route,url,status,/);
     assert.equal(routesCsv.trim().split('\r\n').length, 3);
     const stages = await readFile(join(perfDir, 'stress', 'stages.csv'), 'utf8');
-    assert.match(stages, /^concurrency,duration_ms,requests,/);
+    assert.match(
+      stages,
+      /^mode,load,concurrency,target_rate,achieved_rate,dropped,duration_ms,requests,/,
+    );
     const markdown = await readFile(join(perfDir, 'summary.md'), 'utf8');
     assert.match(markdown, /## Bottlenecks/);
     assert.match(markdown, /## Stress test/);

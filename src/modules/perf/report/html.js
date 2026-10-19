@@ -334,6 +334,8 @@ ${chart ? `<figure class="chart">${inlineSvg(chart)}<figcaption class="muted">Va
  */
 function renderStress(stress) {
   const charts = stressCharts(stress);
+  const open = stress.mode === 'open';
+  const loadText = (/** @type {number} */ load) => (open ? `${load} replays/s` : `${load} users`);
   const insights = stress.insights ?? {};
   const tiles = [
     insights.peakRequestsPerSecond
@@ -345,21 +347,21 @@ function renderStress(stress) {
       : '',
     tile(
       'Latency knee',
-      insights.knee ? `${insights.knee.concurrency} users` : 'not reached',
+      insights.knee ? loadText(insights.knee.concurrency) : 'not reached',
       insights.knee
         ? `p95 ${formatDuration(insights.knee.baselineP95Ms)} → ${formatDuration(insights.knee.p95Ms)}${insights.knee.hop ? ` · ${insights.knee.hop.label}` : ''}`
         : 'p95 never doubled',
     ),
     tile(
       'Throughput plateau',
-      insights.saturation ? `${insights.saturation.concurrency} users` : 'not reached',
+      insights.saturation ? loadText(insights.saturation.concurrency) : 'not reached',
       insights.saturation
         ? `~${Math.round(insights.saturation.requestsPerSecond)} req/s`
         : 'throughput kept growing',
     ),
     tile(
       'Breaking point',
-      insights.breakingPoint ? `${insights.breakingPoint.concurrency} users` : 'not reached',
+      insights.breakingPoint ? loadText(insights.breakingPoint.concurrency) : 'not reached',
       insights.breakingPoint
         ? `${(insights.breakingPoint.errorRate * 100).toFixed(1)}% errors`
         : 'error rate stayed under budget',
@@ -370,7 +372,7 @@ function renderStress(stress) {
   const stageRows = stages
     .map(
       (stage) =>
-        `<tr><th scope="row">${num(stage.concurrency)}</th><td>${e(stage.requestsPerSecond.toFixed(1))}</td><td>${ms(stage.latencyMs?.p50)}</td><td>${ms(stage.latencyMs?.p95)}</td><td>${ms(stage.latencyMs?.p99)}</td><td>${ms(stage.iterationMs?.p50)}</td><td>${num(stage.requests)}</td><td>${e(`${(stage.errorRate * 100).toFixed(1)}%`)}</td><td>${e(stage.errorSamples.join(' | ') || '–')}</td></tr>`,
+        `<tr><th scope="row">${e(stage.load ?? stage.concurrency)}</th><td>${e(stage.requestsPerSecond.toFixed(1))}</td><td>${ms(stage.latencyMs?.p50)}</td><td>${ms(stage.latencyMs?.p95)}</td><td>${ms(stage.latencyMs?.p99)}</td><td>${ms(stage.iterationMs?.p50)}</td><td>${num(stage.requests)}</td><td>${e(`${(stage.errorRate * 100).toFixed(1)}%`)}</td><td>${e(stage.errorSamples.join(' | ') || '–')}</td></tr>`,
     )
     .join('');
   const hopLabels = [...new Set(stages.flatMap((stage) => stage.hops.map((hop) => hop.label)))];
@@ -391,10 +393,10 @@ function renderStress(stress) {
 <div class="tiles">${tiles.join('')}</div>
 ${charts ? `<div class="chart-grid"><figure class="chart">${inlineSvg(charts.latency)}</figure><figure class="chart">${inlineSvg(charts.throughput)}</figure>${charts.errors ? `<figure class="chart">${inlineSvg(charts.errors)}</figure>` : ''}</div>` : ''}
 <div class="table-wrap"><table><caption>Stages</caption>
-<thead><tr><th scope="col">Users</th><th scope="col">Req/s</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">p99</th><th scope="col">Route replay p50</th><th scope="col">Requests</th><th scope="col">Errors</th><th scope="col">Error samples</th></tr></thead>
+<thead><tr><th scope="col">${open ? 'Replays/s' : 'Users'}</th><th scope="col">Req/s</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">p99</th><th scope="col">Route replay p50</th><th scope="col">Requests</th><th scope="col">Errors</th><th scope="col">Error samples</th></tr></thead>
 <tbody>${stageRows}</tbody></table></div>
 <div class="table-wrap"><table><caption>p95 latency per hop and stage</caption>
-<thead><tr><th scope="col">Hop</th>${stages.map((stage) => `<th scope="col">${num(stage.concurrency)} users</th>`).join('')}</tr></thead>
+<thead><tr><th scope="col">Hop</th>${stages.map((stage) => `<th scope="col">${e(loadText(stage.load ?? stage.concurrency))}</th>`).join('')}</tr></thead>
 <tbody>${hopRows}</tbody></table></div>
 <p class="files">Files: <a href="stress/stress.json">stress.json</a> · <a href="stress/stages.csv">stages.csv</a> · <a href="stress/hops.csv">hops.csv</a> · <a href="stress/latency.svg">latency.svg</a> · <a href="stress/throughput.svg">throughput.svg</a></p>
 </section>`;
