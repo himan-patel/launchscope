@@ -1,0 +1,58 @@
+{
+  "name": "launchscope",
+  "version": "0.1.0",
+  "description": "Launch-readiness checks for web apps. Performance first: trace every route and API hop, pinpoint bottlenecks, and stress test.",
+  "keywords": [
+    "launch",
+    "performance",
+    "web-vitals",
+    "load-testing",
+    "stress-testing",
+    "tracing",
+    "cli",
+    "devtools"
+  ],
+  "homepage": "https://github.com/himan-patel/launchscope#readme",
+  "bugs": {
+    "url": "https://github.com/himan-patel/launchscope/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/himan-patel/launchscope.git"
+  },
+  "license": "MIT",
+  "author": "Himan Patel",
+  "type": "module",
+  "bin": {
+    "launchscope": "bin/launchscope.js"
+  },
+  "files": [
+    "bin/",
+    "src/",
+    "!src/**/*.test.js"
+  ],
+  "engines": {
+    "node": ">=22.12.0"
+  },
+  "scripts": {
+    "start": "node bin/launchscope.js",
+    "test": "node --test \"src/**/*.test.js\" \"test/**/*.test.js\"",
+    "test:coverage": "node --test --experimental-test-coverage \"src/**/*.test.js\" \"test/**/*.test.js\"",
+    "lint": "eslint .",
+    "format": "prettier --write .",
+    "format:check": "prettier --check .",
+    "typecheck": "tsc --project tsconfig.json",
+    "check": "npm run lint && npm run format:check && npm run typecheck && npm test"
+  },
+  "dependencies": {
+    "commander": "15.0.0"
+  },
+  "devDependencies": {
+    "@eslint/js": "10.0.1",
+    "@types/node": "22.20.5",
+    "eslint": "10.12.0",
+    "globals": "17.13.0",
+    "prettier": "3.9.9",
+    "typescript": "7.0.2"
+  }
+}

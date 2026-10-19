@@ -1,0 +1,4 @@
+node_modules/
+coverage/
+launchscope-reports/
+package-lock.json
