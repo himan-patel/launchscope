@@ -250,6 +250,13 @@ use it, duration/server-wait/download distributions, transferred and decoded siz
 compression, cache headers, the largest JSON array in its responses, and the mean of each
 `Server-Timing` component.
 
+**Live connections and iframes.** WebSockets (handshake status and time, frames and bytes in
+each direction; never frame contents) and server-sent event streams are listed per route under
+"Live connections and embedded frames". Streams are excluded from request timing statistics and
+the critical path, and they do not stop a page from being considered settled, so pages with live
+updates are measured as quickly as any other. Requests made by iframes are counted separately
+(frames, requests, bytes, origins).
+
 **GraphQL.** Requests to a path ending in `/graphql` or `/gql` (and GET requests carrying a
 GraphQL document) are split by operation, so `POST /graphql (GetViewer)` and
 `POST /graphql (SearchProjects)` are separate endpoints with their own numbers and findings. The

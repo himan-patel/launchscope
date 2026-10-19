@@ -91,6 +91,25 @@ const MAX_JSON_INSPECT_BYTES = 5 * 1024 * 1024;
  * @property {boolean} pending True when still in flight when capture ended.
  * @property {JsonShape | null} jsonShape
  * @property {import('./graphql.js').GraphqlOperation | null} graphql Operation, for GraphQL calls.
+ * @property {string | null} frameId
+ * @property {boolean} isMainFrame False for requests made by iframes.
+ * @property {boolean} streaming A long-lived stream (server-sent events), not a request/response.
+ */
+
+/**
+ * @typedef {object} SocketRecord
+ * @property {string} id
+ * @property {string} url
+ * @property {string | null} initiatorUrl
+ * @property {number | null} status Handshake status (101 on success).
+ * @property {number | null} handshakeMs
+ * @property {number} framesSent
+ * @property {number} framesReceived
+ * @property {number} bytesSent
+ * @property {number} bytesReceived
+ * @property {number} errors
+ * @property {boolean} closed Closed before capture ended.
+ * @property {number | null} openMs How long the socket was open (until close or capture end).
  */
 
 /**
@@ -104,6 +123,13 @@ export class NetworkRecorder {
   #records = new Map();
   /** @type {Set<string>} */
   #inflight = new Set();
+  /** Long-lived responses (server-sent events) that never "finish" and must not block idle. */
+  /** @type {Set<string>} */
+  #streaming = new Set();
+  /** @type {Map<string, SocketRecord & { openedMs: number }>} */
+  #sockets = new Map();
+  /** @type {string | null} */
+  #mainFrameId = null;
   /** @type {Promise<void>[]} */
   #bodyInspections = [];
   /** @type {number | null} */
@@ -126,6 +152,100 @@ export class NetworkRecorder {
     session.on('Network.loadingFinished', (event) => this.#onFinished(event));
     session.on('Network.loadingFailed', (event) => this.#onFailed(event));
     session.on('Network.requestServedFromCache', (event) => this.#onServedFromCache(event));
+    session.on('Network.webSocketCreated', (event) => this.#onSocketCreated(event));
+    session.on('Network.webSocketWillSendHandshakeRequest', (event) =>
+      this.#onSocketHandshakeRequest(event),
+    );
+    session.on('Network.webSocketHandshakeResponseReceived', (event) =>
+      this.#onSocketHandshake(event),
+    );
+    session.on('Network.webSocketFrameSent', (event) => this.#onSocketFrame(event, 'sent'));
+    session.on('Network.webSocketFrameReceived', (event) => this.#onSocketFrame(event, 'received'));
+    session.on('Network.webSocketFrameError', (event) => this.#onSocketError(event));
+    session.on('Network.webSocketClosed', (event) => this.#onSocketClosed(event));
+  }
+
+  /**
+   * WebSocket connections opened during the load. Frame contents are never kept, only counts
+   * and sizes.
+   *
+   * @param {number} captureEndMs
+   * @returns {SocketRecord[]}
+   */
+  sockets(captureEndMs) {
+    return [...this.#sockets.values()].map(({ openedMs, ...socket }) => ({
+      ...socket,
+      openMs: round((socket.closed ? socket.openMs : captureEndMs - openedMs) ?? 0),
+    }));
+  }
+
+  /** @param {any} event */
+  #onSocketHandshakeRequest(event) {
+    const socket = this.#sockets.get(event.requestId);
+    if (socket) socket.openedMs = this.#relative(event.timestamp);
+  }
+
+  /** @param {any} event */
+  #onSocketCreated(event) {
+    this.#sockets.set(event.requestId, {
+      id: event.requestId,
+      url: String(event.url),
+      initiatorUrl: simplifyInitiator(event.initiator).url,
+      status: null,
+      handshakeMs: null,
+      framesSent: 0,
+      framesReceived: 0,
+      bytesSent: 0,
+      bytesReceived: 0,
+      errors: 0,
+      closed: false,
+      openMs: null,
+      openedMs: 0,
+    });
+  }
+
+  /** @param {any} event */
+  #onSocketHandshake(event) {
+    const socket = this.#sockets.get(event.requestId);
+    if (!socket) return;
+    socket.status = event.response?.status ?? null;
+    socket.handshakeMs = round(Math.max(0, this.#relative(event.timestamp) - socket.openedMs));
+  }
+
+  /**
+   * @param {any} event
+   * @param {'sent' | 'received'} direction
+   */
+  #onSocketFrame(event, direction) {
+    const socket = this.#sockets.get(event.requestId);
+    if (!socket) return;
+    const payload = String(event.response?.payloadData ?? '');
+    // Opcode 1 is text; anything else arrives base64-encoded.
+    const bytes =
+      event.response?.opcode === 1
+        ? Buffer.byteLength(payload)
+        : Math.floor((payload.length * 3) / 4);
+    if (direction === 'sent') {
+      socket.framesSent += 1;
+      socket.bytesSent += bytes;
+    } else {
+      socket.framesReceived += 1;
+      socket.bytesReceived += bytes;
+    }
+  }
+
+  /** @param {any} event */
+  #onSocketError(event) {
+    const socket = this.#sockets.get(event.requestId);
+    if (socket) socket.errors += 1;
+  }
+
+  /** @param {any} event */
+  #onSocketClosed(event) {
+    const socket = this.#sockets.get(event.requestId);
+    if (!socket) return;
+    socket.closed = true;
+    socket.openMs = round(Math.max(0, this.#relative(event.timestamp) - socket.openedMs));
   }
 
   /** Monotonic time origin (seconds) of the first request, or null before any request. */
@@ -142,7 +262,8 @@ export class NetworkRecorder {
   async waitForIdle({ idleMs, timeoutMs }) {
     const deadline = Date.now() + timeoutMs;
     while (Date.now() < deadline) {
-      if (this.#inflight.size === 0 && Date.now() - this.#lastActivity >= idleMs) return true;
+      const blocking = [...this.#inflight].filter((id) => !this.#streaming.has(id)).length;
+      if (blocking === 0 && Date.now() - this.#lastActivity >= idleMs) return true;
       await new Promise((resolve) => setTimeout(resolve, 50));
     }
     return false;
@@ -157,7 +278,11 @@ export class NetworkRecorder {
   async finish(captureEndMs) {
     await Promise.allSettled(this.#bodyInspections);
     return [...this.#records.values()]
-      .map(({ hopStartMs: _hopStartMs, ...record }) => {
+      .map(({ hopStartMs: _hopStartMs, ...entry }) => {
+        const record = {
+          ...entry,
+          isMainFrame: this.#mainFrameId === null || entry.frameId === this.#mainFrameId,
+        };
         if (!this.#inflight.has(record.id)) return record;
         return {
           ...record,
@@ -195,13 +320,19 @@ export class NetworkRecorder {
       return;
     }
 
+    const isNavigation = event.type === 'Document' && event.requestId === event.loaderId;
+    if (isNavigation && this.#mainFrameId === null) this.#mainFrameId = event.frameId ?? null;
     this.#inflight.add(event.requestId);
+    if (event.type === 'EventSource') this.#streaming.add(event.requestId);
     this.#records.set(event.requestId, {
       id: event.requestId,
       url,
       method: event.request.method,
       resourceType: event.type ?? 'Other',
-      isNavigation: event.type === 'Document' && event.requestId === event.loaderId,
+      isNavigation,
+      frameId: event.frameId ?? null,
+      isMainFrame: true,
+      streaming: event.type === 'EventSource',
       initiator: simplifyInitiator(event.initiator),
       startMs: at,
       hopStartMs: at,
@@ -284,6 +415,10 @@ export class NetworkRecorder {
     record.fromServiceWorker = Boolean(response.fromServiceWorker);
     record.connectionReused = Boolean(response.connectionReused);
     record.headers = pickHeaders(response.headers ?? {});
+    if (/text\/event-stream/i.test(record.mimeType ?? '')) {
+      record.streaming = true;
+      this.#streaming.add(record.id);
+    }
 
     const timing = response.timing;
     if (timing && !record.fromCache) {
@@ -308,7 +443,8 @@ export class NetworkRecorder {
   #onData(event) {
     const record = this.#records.get(event.requestId);
     if (!record) return;
-    this.#lastActivity = Date.now();
+    // Streams deliver data forever; their messages must not keep the page from settling.
+    if (!record.streaming) this.#lastActivity = Date.now();
     record.bodyBytes += event.dataLength ?? 0;
   }
 

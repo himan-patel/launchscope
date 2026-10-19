@@ -15,6 +15,15 @@ All notable changes to this project are documented here. The format follows
   `operationName` or the document; persisted and batched queries supported), so slow operations,
   duplicates, and payloads are reported per operation. Duplicate detection ignores calls whose
   variables differ. Hop trees, waterfalls, stress hops, and CSVs show the operation.
+- WebSockets, server-sent events, and iframes: sockets are recorded (handshake status and time,
+  frame counts and bytes, never contents), event streams are excluded from timing statistics,
+  the critical path, and stress replays, and iframe requests are counted per route. New findings:
+  `websocket-failed` and `iframe-weight`.
+
+### Fixed
+
+- Pages with a server-sent event stream or other never-ending response no longer wait the full
+  10-second settle timeout on every load.
 
 ## [0.2.0] - 2026-10-19
 

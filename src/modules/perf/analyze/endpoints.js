@@ -55,6 +55,7 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {number | null} largestJsonArray
  * @property {string | null} graphqlOperation GraphQL operation name; endpoints are split by it.
  * @property {import('../capture/graphql.js').OperationType | null} graphqlType
+ * @property {boolean} streaming A server-sent event stream; excluded from timing statistics.
  */
 
 /**
@@ -130,6 +131,7 @@ export function aggregateEndpoints(loads) {
             largestJsonArray: null,
             graphqlOperation: operation?.name ?? null,
             graphqlType: operation?.type ?? null,
+            streaming: false,
           },
           routes: new Set(),
           durations: [],
@@ -158,6 +160,7 @@ export function aggregateEndpoints(loads) {
       if (request.failure || (request.status !== null && request.status >= 400)) meta.failures += 1;
       if (request.redirects.length > 0) meta.redirects += 1;
       if (request.headers['content-encoding']) meta.compressed = true;
+      if (request.streaming) meta.streaming = true;
       meta.contentType ??= request.headers['content-type'] ?? request.mimeType ?? null;
       meta.cacheControl ??= request.headers['cache-control'] ?? null;
       if (request.jsonShape) {
@@ -167,7 +170,7 @@ export function aggregateEndpoints(loads) {
         );
       }
 
-      if (!request.failure && !request.pending) {
+      if (!request.failure && !request.pending && !request.streaming) {
         group.durations.push(request.durationMs);
         group.transfers.push(request.transferBytes);
         group.bodies.push(request.bodyBytes);

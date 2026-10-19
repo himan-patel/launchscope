@@ -120,7 +120,14 @@ export async function loadCookieJar(storageStatePath) {
  * @param {boolean} includeAssets
  */
 function isReplayable(node, targetOrigin, includeAssets) {
-  if (node.method !== 'GET' || node.failed || originOf(node.url) !== targetOrigin) return false;
+  if (
+    node.method !== 'GET' ||
+    node.failed ||
+    node.streaming ||
+    originOf(node.url) !== targetOrigin
+  ) {
+    return false;
+  }
   return API_TYPES.has(node.resourceType) || (includeAssets && ASSET_TYPES.has(node.resourceType));
 }
 
