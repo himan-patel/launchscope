@@ -119,23 +119,149 @@ describe('discoverRepoRoutes', () => {
     assert.deepEqual(result.apis, ['/api/ping']);
   });
 
-  it('reads Angular, React Router, and Express routes from code', async () => {
+  it('follows Angular routes through children, lazy route files, and NgModules', async () => {
     const root = await makeRepo({
-      'src/app/app.routes.ts': `export const routes: Routes = [
-        { path: '', component: Home },
-        { path: 'reports', component: Reports },
-        { path: 'users/:id', component: User },
-        { path: '**', component: NotFound },
-      ];`,
-      'web/router.jsx': `import { createBrowserRouter } from 'react-router-dom';
-        <Route path="/checkout" element={<Checkout />} />`,
-      'server/index.js': `const express = require('express'); const app = express();
-        app.get('/healthz', handler); app.post('/orders', handler); router.get('/api/items/:id', h);`,
+      'src/main.ts': `import { bootstrapApplication } from '@angular/platform-browser';
+        import { provideRouter } from '@angular/router';
+        import { routes } from './app/app.routes';
+        bootstrapApplication(App, { providers: [provideRouter(routes)] });`,
+      'src/app/app.routes.ts': `import { Routes } from '@angular/router';
+        import { Home } from './home';
+        const accountRoutes: Routes = [{ path: 'profile', component: Profile }];
+        export const routes: Routes = [
+          { path: '', component: Home },
+          { path: 'old', redirectTo: '' },
+          { path: 'users/:id', component: User },
+          {
+            path: 'account',
+            component: AccountShell,
+            children: [{ path: '', component: Overview }, ...accountRoutes],
+          },
+          { path: 'admin', loadChildren: () => import('./admin/admin.routes').then((m) => m.ADMIN_ROUTES) },
+          { path: 'legacy', loadChildren: () => import('./legacy/legacy.module').then((m) => m.LegacyModule) },
+          { path: 'lib', loadChildren: () => import('@acme/lib').then((m) => m.ROUTES) },
+          { path: '**', component: NotFound },
+        ];`,
+      'src/app/admin/admin.routes.ts': `import { Route } from '@angular/router';
+        export const ADMIN_ROUTES: Route[] = [
+          { path: '', loadComponent: () => import('./dashboard').then((m) => m.Dashboard) },
+          { path: 'audit', component: Audit },
+        ];`,
+      'src/app/legacy/legacy.module.ts': `import { NgModule } from '@angular/core';
+        import { LegacyRoutingModule } from './legacy-routing.module';
+        @NgModule({ imports: [LegacyRoutingModule] })
+        export class LegacyModule {}`,
+      'src/app/legacy/legacy-routing.module.ts': `import { NgModule } from '@angular/core';
+        import { RouterModule, Routes } from '@angular/router';
+        const routes: Routes = [{ path: 'reports', component: Reports }];
+        @NgModule({ imports: [RouterModule.forChild(routes)], exports: [RouterModule] })
+        export class LegacyRoutingModule {}`,
     });
     const result = await discoverRepoRoutes({ root, routeParams: { id: '7' } });
-    assert.deepEqual(result.frameworks, ['angular', 'express', 'react-router']);
-    assert.deepEqual(result.pages, ['/', '/checkout', '/reports', '/users/7']);
-    assert.deepEqual(result.apis, ['/api/items/7', '/healthz']);
+    assert.deepEqual(result.frameworks, ['angular']);
+    assert.deepEqual(result.pages, [
+      '/',
+      '/account',
+      '/account/profile',
+      '/admin',
+      '/admin/audit',
+      '/legacy/reports',
+      '/users/7',
+    ]);
+    assert.deepEqual(
+      result.skipped.map(({ route, reason }) => [route, reason]),
+      [['/lib (lazy children)', 'loadChildren target could not be resolved']],
+    );
+  });
+
+  it('follows React Router objects, nested <Route> trees, and descendant <Routes>', async () => {
+    const root = await makeRepo({
+      'web/router.jsx': `import { createBrowserRouter } from 'react-router-dom';
+        import { settingsRoutes } from './settings';
+        export const router = createBrowserRouter([
+          {
+            path: '/',
+            element: <Layout />,
+            children: [
+              { index: true, element: <Home /> },
+              { path: 'pricing', element: <Pricing /> },
+              { path: 'settings', children: settingsRoutes },
+              { path: '*', element: <NotFound /> },
+            ],
+          },
+        ]);`,
+      'web/settings.js': `export const settingsRoutes = [{ path: 'billing', lazy: () => import('./billing') }];`,
+      'admin/App.tsx': `import { Routes, Route } from 'react-router';
+        import { Reports } from './Reports';
+        export function App() {
+          return (
+            <Routes>
+              <Route path="/admin" element={<Shell />}>
+                <Route index element={<Overview />} />
+                <Route path="users/:id" element={<User />} />
+                <Route path="reports/*" element={<Reports />} />
+              </Route>
+            </Routes>
+          );
+        }`,
+      'admin/Reports.tsx': `import { Routes, Route } from 'react-router';
+        export const Reports = () => (
+          <Routes>
+            <Route path="daily" element={<Daily />} />
+          </Routes>
+        );`,
+    });
+    const result = await discoverRepoRoutes({ root, routeParams: { id: '7' } });
+    assert.deepEqual(result.frameworks, ['react-router']);
+    assert.deepEqual(result.pages, [
+      '/',
+      '/admin',
+      '/admin/reports',
+      '/admin/reports/daily',
+      '/admin/users/7',
+      '/pricing',
+      '/settings/billing',
+    ]);
+  });
+
+  it('follows Express routers through mount prefixes and modules', async () => {
+    const root = await makeRepo({
+      'server/index.js': `const express = require('express');
+        const api = require('./api');
+        const app = express();
+        app.set('etag', false);
+        app.get('env');
+        app.use(express.json());
+        app.get('/healthz', handler);
+        app.post('/orders', handler);
+        app.route('/status').post(h).get(h);
+        app.use('/api', api);
+        app.use('/ext', require('@acme/router'));`,
+      'server/api/index.js': `import { Router } from 'express';
+        import users from './users.js';
+        const router = Router();
+        router.get('/', h);
+        router.use('/users', users);
+        export default router;`,
+      'server/api/users.ts': `import express from 'express';
+        const users = express.Router();
+        users.get('/:id', h);
+        users.get('/' + 'computed', h);
+        users.get('/files/*', h);
+        export default users;`,
+      'server/orphan.js': `const { Router } = require('express');
+        const orphan = Router();
+        orphan.get('/lost', h);
+        module.exports = orphan;`,
+    });
+    const result = await discoverRepoRoutes({ root, routeParams: { id: '7' } });
+    assert.deepEqual(result.frameworks, ['express']);
+    assert.deepEqual(result.apis, ['/api', '/api/users/7', '/healthz', '/status']);
+    assert.deepEqual(result.skipped.map(({ route, reason }) => [route, reason]).sort(), [
+      ['', 'GET route path is not a string literal'],
+      ['/ext/…', 'mounted router could not be resolved'],
+      ['/lost', 'router is not mounted on an Express app that could be resolved'],
+    ]);
   });
 
   it('rejects a path that is not a directory', async () => {

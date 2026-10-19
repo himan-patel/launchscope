@@ -58,13 +58,14 @@ export function renderHtmlReport({ summary, details }) {
 <header class="top">
   <div class="brand">${LOGO}<div><p class="eyebrow">${e(BRAND.name)} performance report</p><h1>${e(host)}</h1></div></div>
   <p class="meta">${e(summary.target)} · ${e(formatDate(summary.startedAt))} · ${e(describeSettings(summary.settings))}</p>
-  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${summary.lighthouse ? '<a href="#lighthouse">Lighthouse</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
+  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.repo?.verification ? '<a href="#repository">Repository</a>' : ''}${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${summary.lighthouse ? '<a href="#lighthouse">Lighthouse</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
 </header>
 <main id="main">
 ${renderSummary(summary, routes)}
 ${renderFindings(findings)}
 ${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
 ${renderEndpoints(endpoints, summary.openapi)}
+${summary.repo?.verification ? renderRepository(summary.repo) : ''}
 ${summary.navigations ? renderNavigations(summary.navigations) : ''}
 ${summary.browsers ? renderBrowsers(summary.browsers, routes) : ''}
 ${summary.lighthouse ? renderLighthouse(summary.lighthouse, summary.settings.device) : ''}
@@ -652,6 +653,55 @@ function renderOpenApiNote(openapi) {
     .join('');
   return `<p>${num(openapi.measured)} GET operation(s) from <code>${e(openapi.source)}</code> were also measured directly. Endpoints marked "API spec only" are not called by any measured page.</p>
 ${skipped ? `<details><summary>${num(openapi.skipped.length)} operation(s) not called</summary><ul class="path">${skipped}</ul></details>` : ''}`;
+}
+
+/**
+ * Repository routes checked against the live app.
+ *
+ * @param {{ frameworks: string[], skipped: Array<{ route: string, reason: string, file: string }>, verification: import('../analyze/repo-verification.js').RepoVerification }} repo
+ * @returns {string}
+ */
+function renderRepository(repo) {
+  const { verification } = repo;
+  const labels = {
+    ok: 'ok',
+    'not-found': 'not found',
+    error: 'error',
+    'not-measured': 'not measured',
+  };
+  const rows = [
+    ...verification.pages.map((entry) => ({ entry, kind: 'page' })),
+    ...verification.apis.map((entry) => ({ entry, kind: 'API' })),
+  ]
+    .map(({ entry, kind }) => {
+      const label = e(labels[entry.result]);
+      const result =
+        entry.result === 'ok'
+          ? `<span class="good">${label}</span>`
+          : entry.result === 'not-measured'
+            ? label
+            : `<span class="bad">${label}</span>`;
+      const note = entry.redirectedTo
+        ? `redirected to ${entry.redirectedTo}`
+        : (entry.reason ?? '');
+      return `<tr><th scope="row"><code>${e(entry.route)}</code></th><td>${e(kind)}</td><td>${result}</td><td>${e(entry.status ?? '–')}</td><td>${e(note)}</td></tr>`;
+    })
+    .join('');
+  const skipped = repo.skipped
+    .map(
+      (entry) =>
+        `<li><code>${e(entry.route || '(router)')}</code> · ${e(entry.reason)} · <code>${e(entry.file)}</code></li>`,
+    )
+    .join('');
+  const { counts } = verification;
+  return `<section id="repository" aria-labelledby="repository-h"><h2 id="repository-h">Repository routes</h2>
+<p class="lede">Routes found in the source (${e(repo.frameworks.join(', ') || 'no known router')}), each checked against the live app: ${num(counts.ok)} ok, ${num(counts['not-found'])} not found, ${num(counts.error)} error, ${num(counts['not-measured'])} not measured. Results are HTTP outcomes; a single-page app that serves every path returns 200 even for routes it renders as "not found".</p>
+<div class="table-wrap"><table><caption>Repository routes</caption>
+<thead><tr><th scope="col">Route</th><th scope="col">Kind</th><th scope="col">Result</th><th scope="col">Status</th><th scope="col">Note</th></tr></thead>
+<tbody>${rows}</tbody></table></div>
+${skipped ? `<details><summary>${num(repo.skipped.length)} route(s) or router(s) not resolved from the source</summary><ul class="path">${skipped}</ul></details>` : ''}
+<p class="files">Files: <a href="repo.json">repo.json</a></p>
+</section>`;
 }
 
 /**

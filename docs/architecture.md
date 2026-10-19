@@ -48,7 +48,8 @@ src/modules/perf/
 ├── discover/
 │   ├── routes.js         Breadth-first route queue, sitemap reader, URL filtering.
 │   ├── openapi.js        OpenAPI/Swagger JSON → safe GET operations.
-│   └── repo.js           Routes from framework conventions and route code.
+│   ├── repo.js           Routes from file-based framework conventions.
+│   └── code-routes.js    Angular, React Router, and Express routes from parsed source, across files.
 ├── capture/
 │   ├── browser.js        Chromium launch, device/throttle presets, origin-scoped headers, HAR.
 │   ├── page-capture.js   One page load: navigation, network idle, vitals, links, screenshot.
@@ -69,6 +70,7 @@ src/modules/perf/
 │   ├── budgets.js        Default thresholds, config overrides, classification.
 │   ├── bottlenecks.js    Rules that turn measurements into ranked findings.
 │   ├── compare.js        Baseline loading, comparison, and regression findings.
+│   ├── repo-verification.js  Repository routes checked against measured HTTP outcomes.
 │   └── index.js          RunAccumulator: folds each route in as soon as it is measured.
 ├── stress/
 │   ├── safety.js         DNS-verified loopback/private target check.

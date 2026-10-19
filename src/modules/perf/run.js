@@ -8,6 +8,7 @@ import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
 import { compareRuns, loadBaseline, regressionFindings } from './analyze/compare.js';
 import { countBySeverity, RunAccumulator } from './analyze/index.js';
+import { repoVerificationFindings, verifyRepoRoutes } from './analyze/repo-verification.js';
 import { runApiPhase } from './api-phase.js';
 import { discoverRepoRoutes } from './discover/repo.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
@@ -143,6 +144,23 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
       ? await runNavigationPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
   const analysis = accumulator.finish(settings.budgets);
+  const verification = repo
+    ? verifyRepoRoutes({
+        repo,
+        routes: analysis.routes,
+        endpoints: analysis.endpoints,
+        targetUrl: settings.targetUrl,
+        exclude: settings.exclude,
+      })
+    : null;
+  if (repo && verification) {
+    await writeJsonFile(join(perfDirectory, 'repo.json'), { ...repo, verification });
+    const { counts } = verification;
+    logger.info(
+      `Repo     verified against the live app: ${counts.ok} ok, ${counts['not-found']} not found, ` +
+        `${counts.error} error, ${counts['not-measured']} not measured`,
+    );
+  }
   const lighthouse =
     settings.lighthouse && !signal.aborted
       ? await runLighthousePhase({ settings, routes, perfDirectory, logger, signal })
@@ -198,6 +216,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     ...(navigation?.findings ?? []),
     ...(crossBrowser?.findings ?? []),
     ...(lighthouse?.findings ?? []),
+    ...(verification ? repoVerificationFindings(verification) : []),
     ...(comparison ? regressionFindings(comparison) : []),
   ]);
   analysis.totals.findings = countBySeverity(analysis.bottlenecks);
@@ -233,6 +252,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
           pages: repo.pages.length,
           apis: repo.apis.length,
           skipped: repo.skipped,
+          verification,
         }
       : null,
     skippedUrls: skipped,

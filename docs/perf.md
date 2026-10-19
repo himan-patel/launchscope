@@ -132,21 +132,36 @@ launchscope perf http://localhost:3000 --repo .
 Pages that nothing links to (onboarding steps, settings screens, admin pages) are easy to miss
 when crawling. `--repo` reads routes from the app's source:
 
-| Router                       | How routes are found                                                                                      | API routes measured directly       |
-| ---------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
-| Next.js App Router           | `app/**/page.*` (route groups, parallel and private folders handled)                                      | `app/**/route.*` exporting `GET`   |
-| Next.js Pages Router         | `pages/**` (in projects that depend on `next`)                                                            | `pages/api/**`                     |
-| SvelteKit                    | `src/routes/**/+page.svelte`                                                                              | `+server.(js\|ts)` exporting `GET` |
-| Nuxt / Astro                 | `pages/**/*.vue` / `src/pages/**`                                                                         | –                                  |
-| Remix / React Router v7      | `app/routes/*` flat file routes                                                                           | –                                  |
-| Angular, React Router (code) | `path:` / `<Route path>` in route files (best effort; nested child paths are listed without their parent) | –                                  |
-| Express                      | –                                                                                                         | `app.get(…)` / `router.get(…)`     |
+| Router                  | How routes are found                                                                                                                             | API routes measured directly                                                              |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------ | ----------------------------------------------------------------------------------------- |
+| Next.js App Router      | `app/**/page.*` (route groups, parallel and private folders handled)                                                                             | `app/**/route.*` exporting `GET`                                                          |
+| Next.js Pages Router    | `pages/**` (in projects that depend on `next`)                                                                                                   | `pages/api/**`                                                                            |
+| SvelteKit               | `src/routes/**/+page.svelte`                                                                                                                     | `+server.(js\|ts)` exporting `GET`                                                        |
+| Nuxt / Astro            | `pages/**/*.vue` / `src/pages/**`                                                                                                                | –                                                                                         |
+| Remix / React Router v7 | `app/routes/*` flat file routes                                                                                                                  | –                                                                                         |
+| Angular (code)          | `provideRouter` / `RouterModule.forRoot` arrays, nested `children`, lazy `loadChildren` (route files and NgModules with `RouterModule.forChild`) | –                                                                                         |
+| React Router (code)     | `createBrowserRouter` / `useRoutes` objects, `<Routes>` / `<Route>` trees, index routes, descendant `<Routes>` under `path="x/*"`                | –                                                                                         |
+| Express                 | –                                                                                                                                                | `app.get`, `router.get`, `app.route(…).get` with `app.use(prefix, router)` mount prefixes |
+
+Code-based routers are parsed (JavaScript, TypeScript, and JSX syntax trees) and followed across
+files through imports and `require()`, so a child route keeps its parent's prefix and a lazily
+loaded route file contributes routes under the path that loads it. Only routes reachable from a
+router root are reported. Code that cannot be resolved statically is listed in `repo.json` under
+`skipped` with the reason, never guessed: a computed path, a `loadChildren` import through a path
+alias or package, a router built by a function call, or a router that is never mounted.
 
 Dynamic segments (`[slug]`, `:id`, `$id`) are filled from `perf.routeParams` in the config file,
 for example `{ "routeParams": { "slug": "hello-world", "id": "42" } }`. Routes that still need a
 value are listed as skipped in `repo.json` and never guessed. Repository pages are measured like
 sitemap pages (counted against `--max-routes`, not crawled further), and repository API routes are
 measured directly over HTTP (labeled "repository" in the endpoints table).
+
+Every repository route is then **checked against the live app** (`repo.json` → `verification`,
+and the "Repository routes" section of the report): `ok` (status below 400; redirects are noted),
+`not-found` (404 or 410, also reported as a `repo-route-not-found` finding), `error` (other 4xx/5xx
+or a failed load), or `not-measured` (route limit, `--exclude`, or an interrupted run). These are
+HTTP outcomes: a single-page app whose server answers every path with `index.html` returns 200 even
+for a route its client router renders as "not found".
 
 ### Measure API endpoints from an OpenAPI spec
 
@@ -346,7 +361,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 ├── settings.json       the resolved settings (header values redacted)
 ├── browsers.json       Firefox/WebKit results (with --browsers)
 ├── navigations.json    client-side navigations (with --spa)
-├── repo.json           routes found in the repository and those needing routeParams
+├── repo.json           routes found in the repository, unresolved ones, and live verification
 ├── openapi.json        operations measured from the OpenAPI spec and why others were skipped
 ├── routes.csv          one row per route
 ├── endpoints.csv       one row per endpoint
@@ -449,6 +464,7 @@ includes the numbers it is based on and a recommendation.
 | `api-chain`                                                                   | budget                     | the longest sequential API chain has too many calls                                                              |
 | `critical-segment`                                                            | warning                    | one request takes ≥ 40% (and ≥ 300 ms) of the critical path                                                      |
 | `redirect`                                                                    | warning (documents) / info | a request goes through redirects                                                                                 |
+| `repo-route-not-found`                                                        | warning                    | a route defined in the repository (`--repo`) returns 404 or 410 from the live app                                |
 | `failing-endpoint`                                                            | warning / critical (5xx)   | an endpoint failed or returned 4xx/5xx                                                                           |
 | `page-weight`, `request-count`                                                | budget                     | median bytes or requests per load cross the budget                                                               |
 | `third-party`                                                                 | info                       | ≥ 50% of a page's bytes come from other origins                                                                  |
