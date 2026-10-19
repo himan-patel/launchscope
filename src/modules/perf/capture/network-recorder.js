@@ -134,6 +134,8 @@ export class NetworkRecorder {
   #bodyInspections = [];
   /** @type {number | null} */
   #originSeconds = null;
+  /** @type {number | null} */
+  #originWallMs = null;
   #lastActivity = Date.now();
   #inspectJson;
   /** @type {CdpSession} */
@@ -254,6 +256,14 @@ export class NetworkRecorder {
   }
 
   /**
+   * Wall-clock time (epoch ms) of the time origin, from the first request. One constant offset
+   * converts every record's relative times to wall-clock times without disturbing their order.
+   */
+  get originWallMs() {
+    return this.#originWallMs;
+  }
+
+  /**
    * Resolves once no request has been in flight for `idleMs`, or after `timeoutMs`.
    *
    * @param {{ idleMs: number, timeoutMs: number }} options
@@ -305,6 +315,9 @@ export class NetworkRecorder {
     const url = String(event.request.url);
     if (url.startsWith('data:') || url.startsWith('blob:')) return;
     this.#lastActivity = Date.now();
+    if (this.#originSeconds === null && typeof event.wallTime === 'number') {
+      this.#originWallMs = event.wallTime * 1000;
+    }
     const at = this.#relative(event.timestamp);
     const existing = this.#records.get(event.requestId);
 

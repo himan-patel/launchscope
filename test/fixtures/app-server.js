@@ -120,6 +120,34 @@ const OPENAPI = JSON.stringify({
   },
 });
 
+const SPA_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>SPA</title></head>
+<body><nav><a href="/spa" data-spa>Home</a> <a href="/spa/a" data-spa>A</a> <a href="/spa/b" data-spa>B</a> <a href="/about">About (full page)</a></nav>
+<main id="view"></main><script src="/static/spa.js"></script></body></html>`;
+
+const SPA_JS = `
+const view = document.getElementById('view');
+async function render(path) {
+  if (path === '/spa/a') {
+    const item = await fetch('/api/items/42').then((r) => r.json());
+    view.textContent = 'Item ' + item.id;
+  } else if (path === '/spa/b') {
+    const me = await fetch('/api/me').then((r) => r.json());
+    await fetch('/api/slow?user=' + me.id).then((r) => r.json());
+    view.innerHTML = '<ul>' + Array.from({ length: 20 }, (_, i) => '<li>Row ' + i + '</li>').join('') + '</ul>';
+  } else {
+    view.textContent = 'Home';
+  }
+}
+document.addEventListener('click', (event) => {
+  const link = event.target.closest('a[data-spa]');
+  if (!link) return;
+  event.preventDefault();
+  history.pushState({}, '', link.href);
+  render(location.pathname);
+});
+render(location.pathname);
+`;
+
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
 const HERO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#4F46E5"/></svg>`;
@@ -220,6 +248,12 @@ export async function startFixtureServer() {
           /(?:^|;\s*)session=valid(?:;|$)/.test(request.headers.cookie ?? '');
         return authorized ? html(PRIVATE_HTML) : send(401, 'text/plain', 'unauthorized');
       }
+      case '/spa':
+      case '/spa/a':
+      case '/spa/b':
+        return html(SPA_HTML);
+      case '/static/spa.js':
+        return send(200, 'text/javascript', SPA_JS, { 'cache-control': 'max-age=31536000' });
       case '/openapi.json':
         return send(200, 'application/json', OPENAPI);
       case '/api/unlinked':

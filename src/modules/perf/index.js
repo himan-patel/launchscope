@@ -57,6 +57,8 @@ export function registerPerf(program, services) {
     .option('--timeout <duration>', 'page load timeout (default: 30s)')
     .option('--browser-channel <name>', 'use an installed browser, e.g. chrome or msedge')
     .option('--headed', 'show the browser window while measuring')
+    .option('--spa', 'also measure client-side navigations between measured routes')
+    .option('--spa-max <n>', 'maximum navigations to measure with --spa (default: 20)')
     .optionsGroup('Authentication:')
     .option('--storage-state <file>', 'saved login session (see "launchscope login")')
     .option('-H, --header <header>', 'extra "Name: value" header for the target origin', collect)

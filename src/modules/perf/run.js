@@ -12,6 +12,7 @@ import { runApiPhase } from './api-phase.js';
 import { discoverRepoRoutes } from './discover/repo.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
 import { measureRoutes } from './measure-routes.js';
+import { runNavigationPhase } from './navigation-phase.js';
 import { writeReport } from './report/write-report.js';
 import { toReportableSettings } from './settings.js';
 import { runStressPhase } from './stress-phase.js';
@@ -131,6 +132,10 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     accumulator,
     repoApis: repo?.apis ?? [],
   });
+  const navigation =
+    settings.spa && !signal.aborted
+      ? await runNavigationPhase({ settings, routes, perfDirectory, logger, signal })
+      : null;
   const analysis = accumulator.finish(settings.budgets);
 
   const stress =
@@ -154,6 +159,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
   analysis.bottlenecks = sortFindings([
     ...analysis.bottlenecks,
     ...(stress?.findings ?? []),
+    ...(navigation?.findings ?? []),
     ...(comparison ? regressionFindings(comparison) : []),
   ]);
   analysis.totals.findings = countBySeverity(analysis.bottlenecks);
@@ -171,6 +177,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     endpoints: analysis.endpoints,
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
+    navigations: navigation?.navigations ?? null,
     comparison,
     openapi: api?.plan
       ? {

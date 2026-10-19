@@ -179,6 +179,27 @@ cache, and service calls under that trace. The report lists each load's trace ID
 links to it when `--trace-url` is given. Headers are never added to other origins, and the stress
 test does not send them (it would flood your tracing backend).
 
+### Measure client-side navigations (single-page apps)
+
+```sh
+launchscope perf http://localhost:3000 --routes /,/projects,/settings --spa
+```
+
+Full page loads are only half the story in React, Angular, Vue, Svelte, or Next.js apps: users
+mostly move between pages without a reload. With `--spa`, for every link from one measured page
+to another measured route (up to `--spa-max`, default 20), LaunchScope loads the first page,
+clicks the link like a user, and measures from the click until the network and the DOM settle:
+
+- **Duration** (click → last request finished and last DOM change), split into network and render
+- **Requests, API calls, and bytes** the transition triggered, and its **sequential API chain**
+- **Kind**: `client-side` when the router handled it, `full page load` when the browser loaded a
+  new document
+
+Each navigation runs `--runs` times in a fresh browser context. Findings: `slow-navigation`
+(budget `navigationMs`), `navigation-api-chain`, `full-reload-navigation` (an internal link that
+reloads the whole page in an app that otherwise routes client-side), and `navigation-failed`.
+Results are in the report's "Client-side navigations" section and `navigations.json`.
+
 ### Mobile and slow networks
 
 ```sh
@@ -259,6 +280,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 ├── endpoints.json      per-endpoint statistics
 ├── routes.json         measured routes and why other URLs were skipped
 ├── settings.json       the resolved settings (header values redacted)
+├── navigations.json    client-side navigations (with --spa)
 ├── repo.json           routes found in the repository and those needing routeParams
 ├── openapi.json        operations measured from the OpenAPI spec and why others were skipped
 ├── routes.csv          one row per route
@@ -486,6 +508,7 @@ with `--config`). CLI flags override it. Strings may reference environment varia
     "exclude": ["/blog/", "\\.pdf$"],
     "runs": 5,
     "warmRuns": 1,
+    "spa": true,
     "device": "desktop",
     "throttle": "none",
     "timeout": "45s",

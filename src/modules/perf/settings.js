@@ -50,6 +50,8 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
+ * @property {boolean} spa Measure client-side navigations between measured routes.
+ * @property {number} spaMax Maximum navigation pairs to measure.
  * @property {StressSettings} stress
  */
 
@@ -122,6 +124,8 @@ const CONFIG_KEYS = new Set([
   'openapi',
   'repo',
   'routeParams',
+  'spa',
+  'spaMax',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -158,6 +162,8 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [traceUrl]
  * @property {string} [openapi]
  * @property {string} [repo]
+ * @property {boolean} [spa]
+ * @property {string} [spaMax]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -236,6 +242,12 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     openapi: resolveOpenApi(cli.openapi ?? section.openapi, cwd),
     repo: resolveRepo(cli.repo ?? section.repo, cwd),
     routeParams: parseRouteParams(section.routeParams),
+    spa: parseBoolean(cli.spa ?? section.spa, 'spa', false),
+    spaMax: parseInteger(cli.spaMax ?? section.spaMax, '--spa-max', {
+      min: 1,
+      max: 100,
+      fallback: 20,
+    }),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),

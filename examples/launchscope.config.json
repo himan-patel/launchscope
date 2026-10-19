@@ -11,6 +11,7 @@
     "exclude": ["/blog/", "\\.pdf$"],
     "runs": 5,
     "warmRuns": 1,
+    "spa": true,
     "device": "desktop",
     "throttle": "none",
     "timeout": "45s",

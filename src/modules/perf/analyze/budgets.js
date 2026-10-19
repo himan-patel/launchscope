@@ -35,6 +35,8 @@ export const DEFAULT_BUDGETS = Object.freeze({
   requestCount: Object.freeze({ warning: 100, critical: 200 }),
   /** Identical requests (same method and URL) within one load. */
   duplicateCalls: Object.freeze({ warning: 2, critical: 4 }),
+  /** Client-side navigation (with --spa): click until network and DOM settle, median. */
+  navigationMs: Object.freeze({ warning: 1000, critical: 2500 }),
   /** Stress test: p95 latency at the highest stage that completed. */
   stressP95Ms: Object.freeze({ warning: 1000, critical: 3000 }),
   /** Stress test: error ratio at any stage. */
