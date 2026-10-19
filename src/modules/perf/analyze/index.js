@@ -1,5 +1,5 @@
 import { detectBottlenecks } from './bottlenecks.js';
-import { aggregateEndpoints } from './endpoints.js';
+import { EndpointAccumulator } from './endpoints.js';
 import { summarizeRoute } from './routes.js';
 
 /**
@@ -14,53 +14,93 @@ import { summarizeRoute } from './routes.js';
  */
 
 /**
+ * @typedef {object} RunTotals
+ * @property {number} routes
+ * @property {number} failedRoutes
+ * @property {number} pageLoads
+ * @property {number} requests
+ * @property {number} endpoints
+ * @property {{ critical: number, warning: number, info: number }} findings
+ */
+
+/**
  * @typedef {object} RunAnalysis
  * @property {import('./routes.js').RouteSummary[]} routes
  * @property {import('./endpoints.js').EndpointSummary[]} endpoints
  * @property {import('./bottlenecks.js').Finding[]} bottlenecks
- * @property {{ routes: number, failedRoutes: number, pageLoads: number, requests: number, endpoints: number, findings: { critical: number, warning: number, info: number } }} totals
+ * @property {RunTotals} totals
  */
 
 /**
- * Aggregates all measured routes into route summaries, endpoint statistics, and findings.
+ * Builds the run analysis incrementally: each route is summarized and folded into the endpoint
+ * statistics as soon as it has been measured, after which its raw page loads can be released.
+ * Memory then grows with the number of endpoints and samples, not with every request ever seen.
+ */
+export class RunAccumulator {
+  /** @type {import('./routes.js').RouteSummary[]} */
+  #routes = [];
+  /** @type {Map<string, import('../trace/hop-tree.js').Trace>} */
+  #traces = new Map();
+  #endpoints = new EndpointAccumulator();
+  #pageLoads = 0;
+  #requests = 0;
+
+  /**
+   * @param {RouteInput} input
+   * @returns {import('./routes.js').RouteSummary}
+   */
+  addRoute(input) {
+    const summary = summarizeRoute(input);
+    this.#routes.push(summary);
+    if (input.trace) this.#traces.set(input.slug, input.trace);
+    for (const load of input.loads) {
+      this.#pageLoads += 1;
+      this.#requests += load.requests.length;
+      if (load.cache !== 'cold' || load.error !== null) continue;
+      this.#endpoints.add({
+        routeSlug: input.slug,
+        pageOrigin: new URL(load.finalUrl ?? input.url).origin,
+        requests: load.requests,
+      });
+    }
+    return summary;
+  }
+
+  /**
+   * @param {import('./budgets.js').Budgets} budgets
+   * @returns {RunAnalysis}
+   */
+  finish(budgets) {
+    const routes = this.#routes;
+    const endpoints = this.#endpoints.result();
+    const bottlenecks = detectBottlenecks({ routes, traces: this.#traces, endpoints, budgets });
+    return {
+      routes,
+      endpoints,
+      bottlenecks,
+      totals: {
+        routes: routes.length,
+        failedRoutes: routes.filter((route) => route.error !== null).length,
+        pageLoads: this.#pageLoads,
+        requests: this.#requests,
+        endpoints: endpoints.length,
+        findings: countBySeverity(bottlenecks),
+      },
+    };
+  }
+}
+
+/**
+ * Aggregates all measured routes at once (convenience wrapper over `RunAccumulator`).
  *
  * @param {RouteInput[]} inputs
  * @param {import('./budgets.js').Budgets} budgets
  * @returns {RunAnalysis}
  */
 export function analyzeRun(inputs, budgets) {
-  const routes = inputs.map((input) => summarizeRoute(input));
-  const coldLoads = inputs.flatMap((input) =>
-    input.loads
-      .filter((load) => load.cache === 'cold' && load.error === null)
-      .map((load) => ({
-        routeSlug: input.slug,
-        pageOrigin: new URL(load.finalUrl ?? input.url).origin,
-        requests: load.requests,
-      })),
-  );
-  const endpoints = aggregateEndpoints(coldLoads);
-  /** @type {Map<string, import('../trace/hop-tree.js').Trace>} */
-  const traces = new Map();
-  for (const input of inputs) if (input.trace) traces.set(input.slug, input.trace);
-  const bottlenecks = detectBottlenecks({ routes, traces, endpoints, budgets });
-
-  return {
-    routes,
-    endpoints,
-    bottlenecks,
-    totals: {
-      routes: routes.length,
-      failedRoutes: routes.filter((route) => route.error !== null).length,
-      pageLoads: inputs.reduce((sum, input) => sum + input.loads.length, 0),
-      requests: inputs.reduce(
-        (sum, input) => sum + input.loads.reduce((total, load) => total + load.requests.length, 0),
-        0,
-      ),
-      endpoints: endpoints.length,
-      findings: countBySeverity(bottlenecks),
-    },
-  };
+  const accumulator = new RunAccumulator();
+  for (const input of inputs) accumulator.addRoute(input);
+  return accumulator.finish(budgets);
 }
 
 /**

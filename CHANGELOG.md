@@ -22,6 +22,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
+  and its raw loads are released, keeping only the representative load for the report and stress
+  test (about 3.4× less heap on a 200-route synthetic run). `run.js` is split into
+  `measure-routes.js`, `stress-phase.js`, and `console-output.js`.
 - JSON payload shapes are summarized on every cold run (not only the first), so collection sizes
   reflect all measured loads.
 - Waterfalls show up to 150 requests (was 60) and say how many were left out; every request is

@@ -33,8 +33,11 @@ test/                     End-to-end tests that run the real CLI binary against 
 src/modules/perf/
 ├── index.js              Registers `launchscope perf <target>` and its options.
 ├── settings.js           CLI > config > defaults, validated at the trust boundary.
-├── run.js                Orchestrates discovery → measurement → analysis → stress → report.
+├── run.js                Orchestrates safety checks → measurement → analysis → stress → report.
+├── measure-routes.js     Route queue loop: measure, write route files, fold into the analysis.
 ├── measure.js            Cold and warm runs of one route, each in a fresh browser context.
+├── stress-phase.js       Builds scenarios, runs the stress test, writes stress/ files.
+├── console-output.js     Terminal progress lines and the findings summary.
 ├── discover/routes.js    Breadth-first route queue, sitemap reader, URL filtering.
 ├── capture/
 │   ├── browser.js        Chromium launch, device/throttle presets, origin-scoped headers, HAR.
@@ -50,7 +53,7 @@ src/modules/perf/
 │   ├── endpoints.js      Per-endpoint aggregation with path templates.
 │   ├── budgets.js        Default thresholds, config overrides, classification.
 │   ├── bottlenecks.js    Rules that turn measurements into ranked findings.
-│   └── index.js          Glue: routes + endpoints + findings + totals.
+│   └── index.js          RunAccumulator: folds each route in as soon as it is measured.
 ├── stress/
 │   ├── safety.js         DNS-verified loopback/private target check.
 │   ├── scenario.js       Route replay plans from traces; storage-state cookie jar.
@@ -65,6 +68,12 @@ src/modules/perf/
     ├── escape.js         HTML and CSV escaping.
     └── paths.js          Route folder names.
 ```
+
+Memory stays bounded on large runs: as soon as a route is measured, its loads are written to
+`loads.json` and folded into the `RunAccumulator` (route summary plus endpoint samples), then
+released. Only each route's representative load and trace are kept for the report and the stress
+test. In a synthetic run of 200 routes × 5 loads × 150 requests this keeps the heap at about
+28 MB instead of 95 MB.
 
 Data flows one way: capture produces `PageLoad` records, tracing turns the representative load
 into a `Trace`, analysis turns loads and traces into route summaries, endpoint statistics, and
