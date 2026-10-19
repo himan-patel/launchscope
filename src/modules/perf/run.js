@@ -1,40 +1,22 @@
-import { mkdir, writeFile } from 'node:fs/promises';
+import { mkdir } from 'node:fs/promises';
 import { join } from 'node:path';
 import { BRAND } from '../../core/brand.js';
-import { formatBytes, formatDuration } from '../../core/duration.js';
+import { formatDuration } from '../../core/duration.js';
 import { ExitCode, LaunchScopeError } from '../../core/errors.js';
 import { createInterruptController, INTERRUPTED_EXIT_CODE } from '../../core/interrupt.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
-import { analyzeRun, countBySeverity } from './analyze/index.js';
-import { summarize } from './analyze/stats.js';
-import { launchBrowser } from './capture/browser.js';
-import { readSitemap, RouteQueue } from './discover/routes.js';
-import { measureRoute } from './measure.js';
-import { createSlugAllocator } from './report/paths.js';
+import { countBySeverity, RunAccumulator } from './analyze/index.js';
+import { writeFindings, writeRunHeader } from './console-output.js';
+import { measureRoutes } from './measure-routes.js';
 import { writeReport } from './report/write-report.js';
 import { toReportableSettings } from './settings.js';
-import { analyzeStress } from './stress/analyze.js';
-import { runStress } from './stress/runner.js';
+import { runStressPhase } from './stress-phase.js';
 import { assertStressAllowed } from './stress/safety.js';
-import { buildScenarios, loadCookieJar } from './stress/scenario.js';
-import { buildTrace, pickRepresentativeLoad, renderTraceTree } from './trace/hop-tree.js';
-
-const SITEMAP_TIMEOUT_MS = 10_000;
 
 /**
- * @typedef {object} RouteResult
- * @property {string} url
- * @property {string} slug Folder name under perf/routes/.
- * @property {number} depth
- * @property {'seed' | 'sitemap' | 'link'} source
- * @property {import('./measure.js').RouteMeasurement} measurement
- * @property {import('./trace/hop-tree.js').Trace | null} trace From the representative load.
- * @property {number | null} representativeRun
- */
-
-/**
- * Runs the performance module end to end.
+ * Runs the performance module end to end:
+ * settings → safety checks → discovery and measurement → analysis → stress → report.
  *
  * @param {import('./settings.js').PerfSettings} settings
  * @param {import('../../runtime.js').Runtime} runtime
@@ -42,16 +24,7 @@ const SITEMAP_TIMEOUT_MS = 10_000;
  */
 export async function runPerf(settings, runtime) {
   const { logger, io } = runtime;
-  logger.banner();
-  logger.info(`Target   ${logger.paint.cyan(settings.targetUrl.href)} (${settings.scope})`);
-  logger.info(
-    `Plan     ${settings.runs} cold run(s)${settings.warmRuns ? ` + ${settings.warmRuns} warm` : ''} per route, ` +
-      `${settings.device}, throttle ${settings.throttle}, timeout ${formatDuration(settings.timeoutMs)}`,
-  );
-  logger.info(
-    `Routes   up to ${settings.maxRoutes}, crawl depth ${settings.depth}, sitemap ${settings.sitemap ? 'on' : 'off'}` +
-      (settings.storageStatePath ? ', signed in via storage state' : ''),
-  );
+  writeRunHeader(settings, logger);
 
   const runDirectory = await createRunDirectory({
     outputDir: runtime.outputDir,
@@ -105,90 +78,19 @@ export async function runPerf(settings, runtime) {
 async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
   const { logger, io } = runtime;
   const startedAt = new Date();
-  const queue = await seedRouteQueue(settings, logger);
-  const allocateSlug = createSlugAllocator();
-  /** @type {RouteResult[]} */
-  const results = [];
-  const { browser, devices } = await launchBrowser(settings);
-  // Closing the browser makes an in-flight measurement fail fast, so a stop takes effect now.
-  const closeBrowser = () => {
-    browser.close().catch(() => {});
-  };
-  signal.addEventListener('abort', closeBrowser, { once: true });
-
-  try {
-    logger.info('');
-    for (let route = queue.next(); route && !signal.aborted; route = queue.next()) {
-      const slug = allocateSlug(route.url);
-      await mkdir(join(perfDirectory, 'routes', slug), { recursive: true });
-      let measurement;
-      try {
-        measurement = await measureRoute({
-          browser,
-          devices,
-          settings,
-          url: route.url,
-          harPath: join(perfDirectory, 'routes', slug, 'page.har'),
-        });
-      } catch (error) {
-        if (signal.aborted) break;
-        throw error;
-      }
-      if (route.depth < settings.depth) {
-        for (const link of measurement.links) queue.add(link, route.depth + 1, 'link');
-      }
-
-      const result = await writeRouteArtifacts({
-        perfDirectory,
-        slug,
-        route,
-        measurement,
-      });
-      results.push(result);
-      logger.info(formatRouteLine(measurement, logger.paint));
-      const longest = result.trace?.chains[0];
-      if (longest) {
-        logger.info(
-          logger.paint.dim(
-            `      ↳ sequential API chain: ${longest.ids.length} calls, ${formatDuration(longest.totalMs)}`,
-          ),
-        );
-      }
-      if (result.trace) {
-        logger.debug(
-          `Hop tree for ${route.url}:\n${renderTraceTree(result.trace, { maxNodes: 25 }).join('\n')}`,
-        );
-      }
-    }
-  } finally {
-    signal.removeEventListener('abort', closeBrowser);
-    await browser.close().catch(() => {});
-  }
-  if (signal.aborted) {
-    logger.warn(`Stopped early: ${results.length} route(s) were measured completely.`);
-  }
-
-  await writeJsonFile(join(perfDirectory, 'routes.json'), {
-    measured: results.map(({ url, slug, depth, source }) => ({ url, slug, depth, source })),
-    skipped: queue.skipped,
+  const accumulator = new RunAccumulator();
+  const { routes, skipped } = await measureRoutes({
+    settings,
+    logger,
+    perfDirectory,
+    signal,
+    accumulator,
   });
-
-  const analysis = analyzeRun(
-    results.map((result) => ({
-      url: result.url,
-      slug: result.slug,
-      depth: result.depth,
-      source: result.source,
-      loads: result.measurement.loads,
-      trace: result.trace,
-      representativeRun: result.representativeRun,
-    })),
-    settings.budgets,
-  );
+  const analysis = accumulator.finish(settings.budgets);
 
   const stress =
     settings.stress.enabled && !signal.aborted
-      ? await runStressPhase({ settings, results, perfDirectory, logger, signal })
+      ? await runStressPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
   if (stress) {
     analysis.bottlenecks = sortFindings([...analysis.bottlenecks, ...stress.findings]);
@@ -208,7 +110,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     endpoints: analysis.endpoints,
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
-    skippedUrls: queue.skipped,
+    skippedUrls: skipped,
   };
   await writeJsonFile(join(perfDirectory, 'summary.json'), summary);
   await writeJsonFile(join(perfDirectory, 'endpoints.json'), analysis.endpoints);
@@ -217,30 +119,24 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     perfDirectory,
     summary,
     details: new Map(
-      results.map((result) => [
-        result.slug,
+      routes.map((route) => [
+        route.slug,
         {
-          trace: result.trace,
-          load:
-            result.measurement.loads.find(
-              (load) =>
-                load.cache === 'cold' &&
-                load.error === null &&
-                load.run === result.representativeRun,
-            ) ?? null,
-          files: { screenshot: result.measurement.screenshot !== null, har: true },
+          trace: route.trace,
+          load: route.representativeLoad,
+          files: { screenshot: route.hasScreenshot, har: true },
         },
       ]),
     ),
   });
 
   logger.info('');
-  const skipped = Object.entries(queue.skipped)
+  const skippedText = Object.entries(skipped)
     .map(([reason, count]) => `${count} ${reason}`)
     .join(', ');
   logger.info(
-    `Measured ${results.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
-      (skipped ? logger.paint.dim(` · skipped: ${skipped}`) : ''),
+    `Measured ${routes.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
+      (skippedText ? logger.paint.dim(` · skipped: ${skippedText}`) : ''),
   );
   writeFindings(analysis.bottlenecks, logger);
   logger.success(`Report: ${logger.paint.cyan(report.html)}`);
@@ -253,97 +149,6 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     });
   }
   enforceFailOn(analysis.bottlenecks, settings.failOn);
-}
-
-/**
- * Replays the measured routes under increasing concurrency and writes `stress/` artifacts.
- * Ctrl+C stops the current stage and keeps what was measured so far.
- *
- * @param {object} options
- * @param {import('./settings.js').PerfSettings} options.settings
- * @param {RouteResult[]} options.results
- * @param {string} options.perfDirectory
- * @param {import('../../core/logger.js').Logger} options.logger
- * @param {AbortSignal} options.signal
- * @returns {Promise<{ result: import('./stress/runner.js').StressResult, insights: import('./stress/analyze.js').StressInsights, findings: import('./analyze/bottlenecks.js').Finding[] } | null>}
- */
-async function runStressPhase({ settings, results, perfDirectory, logger, signal }) {
-  const { paint } = logger;
-  const scenarios = buildScenarios(results, {
-    targetOrigin: settings.targetUrl.origin,
-    includeAssets: settings.stress.includeAssets,
-  });
-  if (scenarios.length === 0) {
-    logger.warn('Skipping the stress test: no route loaded successfully on the target origin.');
-    return null;
-  }
-
-  const cookieFor = await loadCookieJar(settings.storageStatePath);
-
-  logger.info('');
-  logger.info(
-    paint.bold('Stress test') +
-      paint.dim(
-        ` · ${scenarios.length} route scenario(s), GET requests to ${settings.targetUrl.origin} only`,
-      ),
-  );
-  const result = await runStress({
-    scenarios,
-    settings: settings.stress,
-    headers: settings.headers,
-    cookieFor,
-    signal,
-    onStage: (stage) => {
-      const icon = stage.errorRate > 0 ? paint.yellow('!') : paint.green('✔');
-      logger.info(
-        `  ${icon} ${String(stage.concurrency).padStart(4)} users  ` +
-          paint.dim(
-            `${stage.requestsPerSecond.toFixed(1)} req/s · p50 ${formatDuration(stage.latencyMs?.p50 ?? Number.NaN)} · ` +
-              `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%`,
-          ),
-      );
-    },
-  });
-  if (result.stoppedReason) logger.warn(result.stoppedReason);
-
-  const { insights, findings } = analyzeStress(result, settings.budgets);
-  const stressDirectory = join(perfDirectory, 'stress');
-  await mkdir(stressDirectory, { recursive: true });
-  await writeJsonFile(join(stressDirectory, 'stress.json'), { ...result, insights });
-  return { result, insights, findings };
-}
-
-const MAX_FINDINGS_IN_CONSOLE = 10;
-
-/**
- * @param {import('./analyze/bottlenecks.js').Finding[]} findings
- * @param {import('../../core/logger.js').Logger} logger
- */
-function writeFindings(findings, logger) {
-  const { paint } = logger;
-  const counts = countBySeverity(findings);
-  logger.info('');
-  if (findings.length === 0) {
-    logger.success('No bottlenecks found within the configured budgets.');
-    return;
-  }
-  logger.info(
-    paint.bold('Bottlenecks') +
-      paint.dim(` · ${counts.critical} critical, ${counts.warning} warning, ${counts.info} info`),
-  );
-  const icons = {
-    critical: paint.red('●'),
-    warning: paint.yellow('●'),
-    info: paint.dim('○'),
-  };
-  for (const finding of findings.slice(0, MAX_FINDINGS_IN_CONSOLE)) {
-    logger.info(`  ${icons[finding.severity]} ${finding.title}`);
-    logger.info(paint.dim(`      ${finding.recommendation}`));
-  }
-  if (findings.length > MAX_FINDINGS_IN_CONSOLE) {
-    logger.info(paint.dim(`  … ${findings.length - MAX_FINDINGS_IN_CONSOLE} more in the report`));
-  }
-  logger.info('');
 }
 
 /**
@@ -363,123 +168,4 @@ export function enforceFailOn(findings, failOn) {
       { exitCode: ExitCode.CHECK_FAILED },
     );
   }
-}
-
-/**
- * Seeds the queue with explicit routes (or the target) and, when enabled, the sitemap.
- *
- * @param {import('./settings.js').PerfSettings} settings
- * @param {import('../../core/logger.js').Logger} logger
- * @returns {Promise<RouteQueue>}
- */
-async function seedRouteQueue(settings, logger) {
-  const queue = new RouteQueue({
-    targetUrl: settings.targetUrl,
-    exclude: settings.exclude,
-    maxRoutes: settings.maxRoutes,
-  });
-  const seeds = settings.routes.length > 0 ? settings.routes : [settings.targetUrl.href];
-  for (const seed of seeds) queue.add(seed, 0, 'seed');
-
-  if (settings.sitemap) {
-    const sitemap = await readSitemap({
-      targetUrl: settings.targetUrl,
-      headers: settings.headers,
-      timeoutMs: Math.min(SITEMAP_TIMEOUT_MS, settings.timeoutMs),
-    });
-    if (sitemap.error) logger.warn(`Could not read sitemap.xml: ${sitemap.error}`);
-    let added = 0;
-    for (const url of sitemap.urls) {
-      // Sitemap routes are measured but not crawled further.
-      if (queue.add(url, settings.depth, 'sitemap')) added += 1;
-    }
-    if (sitemap.urls.length > 0) {
-      logger.debug(`sitemap.xml listed ${sitemap.urls.length} URL(s); queued ${added}`);
-    }
-  }
-  return queue;
-}
-
-/**
- * @param {object} options
- * @param {string} options.perfDirectory
- * @param {string} options.slug
- * @param {import('./discover/routes.js').QueuedRoute} options.route
- * @param {import('./measure.js').RouteMeasurement} options.measurement
- * @returns {Promise<RouteResult>}
- */
-async function writeRouteArtifacts({ perfDirectory, slug, route, measurement }) {
-  const routeDirectory = join(perfDirectory, 'routes', slug);
-  await mkdir(routeDirectory, { recursive: true });
-  await writeJsonFile(join(routeDirectory, 'loads.json'), measurement.loads);
-  if (measurement.screenshot) {
-    await writeFile(join(routeDirectory, 'screenshot.png'), measurement.screenshot);
-  }
-
-  const representative = pickRepresentativeLoad(measurement.loads);
-  const trace = representative
-    ? buildTrace(representative.requests, representative.finalUrl ?? route.url)
-    : null;
-  if (representative && trace) {
-    await writeJsonFile(join(routeDirectory, 'trace.json'), {
-      representativeRun: representative.run,
-      ...trace,
-    });
-    await writeFile(join(routeDirectory, 'trace.txt'), `${renderTraceTree(trace).join('\n')}\n`);
-  }
-
-  return {
-    url: route.url,
-    slug,
-    depth: route.depth,
-    source: route.source,
-    measurement,
-    trace,
-    representativeRun: representative?.run ?? null,
-  };
-}
-
-/**
- * @param {import('./measure.js').RouteMeasurement} measurement
- * @param {import('../../core/logger.js').Palette} paint
- * @returns {string}
- */
-function formatRouteLine(measurement, paint) {
-  const cold = measurement.loads.filter((load) => load.cache === 'cold');
-  const failed = cold.filter((load) => load.error !== null);
-  const url = new URL(measurement.url);
-  const path = `${url.pathname}${url.search}`;
-  if (failed.length === cold.length) {
-    return `  ${paint.red('✖')} ${path}  ${paint.red(failed[0]?.error ?? 'failed')}`;
-  }
-  const status = cold.find((load) => load.status !== null)?.status ?? null;
-  const p50 = (/** @type {Array<number | null | undefined>} */ values) => summarize(values)?.p50;
-  const ttfb = p50(cold.map((load) => load.vitals?.ttfbMs));
-  const lcp = p50(cold.map((load) => load.vitals?.lcpMs));
-  const requests = p50(cold.map((load) => load.requests.length));
-  const bytes = p50(cold.map((load) => sumTransfer(load)));
-  const icon = status !== null && status >= 400 ? paint.yellow('!') : paint.green('✔');
-  return (
-    `  ${icon} ${path}  ` +
-    paint.dim(
-      `${status ?? '–'} · TTFB ${fmt(ttfb, formatDuration)} · LCP ${fmt(lcp, formatDuration)} · ` +
-        `${requests ?? '–'} requests · ${fmt(bytes, formatBytes)}`,
-    )
-  );
-}
-
-/**
- * @param {import('./capture/page-capture.js').PageLoad} load
- * @returns {number}
- */
-function sumTransfer(load) {
-  return load.requests.reduce((total, request) => total + request.transferBytes, 0);
-}
-
-/**
- * @param {number | undefined} value
- * @param {(value: number) => string} format
- */
-function fmt(value, format) {
-  return value === undefined ? '–' : format(value);
 }

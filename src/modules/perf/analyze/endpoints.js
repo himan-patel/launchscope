@@ -87,14 +87,18 @@ export function templatePath(pathname) {
 }
 
 /**
- * @param {LoadInput[]} loads Cold loads only, so warm-cache hits do not skew the numbers.
- * @returns {EndpointSummary[]} Sorted by p95 duration, slowest first.
+ * Aggregates endpoint statistics incrementally, one page load at a time, so a run with many
+ * routes never has to keep every request of every load in memory at once.
  */
-export function aggregateEndpoints(loads) {
+export class EndpointAccumulator {
   /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes'>, routes: Set<string>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
-  const groups = new Map();
+  #groups = new Map();
 
-  for (const load of loads) {
+  /**
+   * @param {LoadInput} load A cold load (warm-cache hits would skew the numbers).
+   */
+  add(load) {
+    const groups = this.#groups;
     /** @type {Map<string, number>} */
     const perLoad = new Map();
     /** @type {Map<string, { key: string, count: number }>} */
@@ -197,23 +201,39 @@ export function aggregateEndpoints(loads) {
     }
   }
 
-  return [...groups.values()]
-    .map((group) => ({
-      ...group.meta,
-      routes: [...group.routes],
-      durationMs: summarize(group.durations),
-      waitMs: summarize(group.waits),
-      downloadMs: summarize(group.downloads),
-      transferBytes: summarize(group.transfers),
-      bodyBytes: summarize(group.bodies),
-      serverTiming: [...group.timings].map(([name, samples]) => ({
-        name,
-        samples: samples.length,
-        meanMs: round(samples.reduce((sum, value) => sum + value, 0) / samples.length),
-        maxMs: Math.max(...samples),
-      })),
-    }))
-    .sort((a, b) => (b.durationMs?.p95 ?? -1) - (a.durationMs?.p95 ?? -1));
+  /**
+   * @returns {EndpointSummary[]} Sorted by p95 duration, slowest first.
+   */
+  result() {
+    const groups = this.#groups;
+    return [...groups.values()]
+      .map((group) => ({
+        ...group.meta,
+        routes: [...group.routes],
+        durationMs: summarize(group.durations),
+        waitMs: summarize(group.waits),
+        downloadMs: summarize(group.downloads),
+        transferBytes: summarize(group.transfers),
+        bodyBytes: summarize(group.bodies),
+        serverTiming: [...group.timings].map(([name, samples]) => ({
+          name,
+          samples: samples.length,
+          meanMs: round(samples.reduce((sum, value) => sum + value, 0) / samples.length),
+          maxMs: Math.max(...samples),
+        })),
+      }))
+      .sort((a, b) => (b.durationMs?.p95 ?? -1) - (a.durationMs?.p95 ?? -1));
+  }
+}
+
+/**
+ * @param {LoadInput[]} loads Cold loads only, so warm-cache hits do not skew the numbers.
+ * @returns {EndpointSummary[]} Sorted by p95 duration, slowest first.
+ */
+export function aggregateEndpoints(loads) {
+  const accumulator = new EndpointAccumulator();
+  for (const load of loads) accumulator.add(load);
+  return accumulator.result();
 }
 
 /**
