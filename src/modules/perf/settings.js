@@ -52,6 +52,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {boolean} json
  * @property {boolean} dryRun Resolve settings and create the run directory without a browser.
  * @property {boolean} exportK6 Write a k6 load-test script built from the measured scenarios.
+ * @property {boolean} lighthouse Run Google Lighthouse once per measured route (optional peer dependency).
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
@@ -137,6 +138,7 @@ const CONFIG_KEYS = new Set([
   'spaMax',
   'browsers',
   'exportK6',
+  'lighthouse',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -173,6 +175,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {boolean} [json]
  * @property {boolean} [dryRun]
  * @property {boolean} [exportK6]
+ * @property {boolean} [lighthouse]
  * @property {string} [baseline]
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
@@ -257,6 +260,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     json: cli.json ?? false,
     dryRun: cli.dryRun ?? false,
     exportK6: parseBoolean(cli.exportK6 ?? section.exportK6, 'exportK6', false),
+    lighthouse: parseBoolean(cli.lighthouse ?? section.lighthouse, 'lighthouse', false),
     budgets: resolveBudgets(section.budgets),
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),

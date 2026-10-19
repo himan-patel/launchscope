@@ -37,6 +37,8 @@ export const DEFAULT_BUDGETS = Object.freeze({
   duplicateCalls: Object.freeze({ warning: 2, critical: 4 }),
   /** Client-side navigation (with --spa): click until network and DOM settle, median. */
   navigationMs: Object.freeze({ warning: 1000, critical: 2500 }),
+  /** Lighthouse performance score (0–1); LOWER is worse, so these are minimums. */
+  lighthouseScore: Object.freeze({ warning: 0.9, critical: 0.5 }),
   /** Stress test: p95 latency at the highest stage that completed. */
   stressP95Ms: Object.freeze({ warning: 1000, critical: 3000 }),
   /** Stress test: error ratio at any stage. */
@@ -71,7 +73,10 @@ export function resolveBudgets(config) {
     }
     if (typeof value === 'number') {
       assertNonNegative(value, key);
-      budgets[key] = { warning: value, critical: Math.max(value, current.critical) };
+      budgets[key] =
+        key === 'lighthouseScore'
+          ? { warning: value, critical: Math.min(value, current.critical) }
+          : { warning: value, critical: Math.max(value, current.critical) };
       continue;
     }
     if (typeof value !== 'object' || value === null || Array.isArray(value)) {
@@ -85,8 +90,17 @@ export function resolveBudgets(config) {
       /** @type {{ warning?: unknown, critical?: unknown }} */ (value);
     assertNonNegative(warning, `${key}.warning`);
     assertNonNegative(critical, `${key}.critical`);
-    if (/** @type {number} */ (warning) > /** @type {number} */ (critical)) {
-      throw new UsageError(`Budget "${key}" has a warning level above its critical level.`);
+    const inverted = key === 'lighthouseScore';
+    if (
+      inverted
+        ? /** @type {number} */ (warning) < /** @type {number} */ (critical)
+        : /** @type {number} */ (warning) > /** @type {number} */ (critical)
+    ) {
+      throw new UsageError(
+        inverted
+          ? `Budget "${key}" has a warning level below its critical level (lower scores are worse).`
+          : `Budget "${key}" has a warning level above its critical level.`,
+      );
     }
     budgets[key] = {
       warning: /** @type {number} */ (warning),

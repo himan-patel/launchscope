@@ -12,6 +12,7 @@ import { runApiPhase } from './api-phase.js';
 import { discoverRepoRoutes } from './discover/repo.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
 import { runCrossBrowserPhase } from './cross-browser-phase.js';
+import { loadLighthouse, runLighthousePhase } from './lighthouse-phase.js';
 import { measureRoutes } from './measure-routes.js';
 import { runNavigationPhase } from './navigation-phase.js';
 import { buildK6Script } from './report/k6.js';
@@ -71,6 +72,8 @@ export async function runPerf(settings, runtime) {
       'No earlier completed run for this host was found; skipping the baseline comparison.',
     );
   }
+
+  if (settings.lighthouse) await loadLighthouse();
 
   if (settings.dryRun) {
     logger.success(`Dry run: settings resolved and written to ${perfDirectory}`);
@@ -140,6 +143,10 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
       ? await runNavigationPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
   const analysis = accumulator.finish(settings.budgets);
+  const lighthouse =
+    settings.lighthouse && !signal.aborted
+      ? await runLighthousePhase({ settings, routes, perfDirectory, logger, signal })
+      : null;
   const crossBrowser = !signal.aborted
     ? await runCrossBrowserPhase({
         settings,
@@ -190,6 +197,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     ...(stress?.findings ?? []),
     ...(navigation?.findings ?? []),
     ...(crossBrowser?.findings ?? []),
+    ...(lighthouse?.findings ?? []),
     ...(comparison ? regressionFindings(comparison) : []),
   ]);
   analysis.totals.findings = countBySeverity(analysis.bottlenecks);
@@ -209,6 +217,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
     navigations: navigation?.navigations ?? null,
     browsers: crossBrowser?.browsers ?? null,
+    lighthouse: lighthouse?.results ?? null,
     comparison,
     openapi: api?.plan
       ? {

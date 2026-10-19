@@ -100,6 +100,7 @@ export function registerPerf(program, services) {
     .option('--json', 'print the summary as JSON to stdout')
     .option('--dry-run', 'validate options and config without opening a browser')
     .option('--export-k6', 'also write a k6 load-test script built from the measured routes')
+    .option('--lighthouse', 'also run Google Lighthouse on each route (npm install lighthouse)')
     .option(
       '--baseline <run>',
       'compare with an earlier run: "latest" or a path to its summary.json',

@@ -216,6 +216,22 @@ browser), `browser-errors` (exceptions or failed requests Chromium does not have
 report show as "–"; network throttling and CPU slowdown apply to Chromium only. A browser that
 is not installed is skipped with a warning.
 
+### Add Lighthouse scores
+
+```sh
+npm install lighthouse          # optional peer dependency; needs Node.js 22.19+
+launchscope perf http://localhost:3000 --lighthouse
+```
+
+Runs one Google Lighthouse performance audit per measured route (Lighthouse's mobile preset, or
+its desktop preset with `--device desktop`) against a separate Playwright Chromium, saves each
+full report as `routes/<route>/lighthouse.html`, and adds a "Lighthouse" section with the score,
+FCP, LCP, TBT, CLS, and Speed Index. Lighthouse applies its own simulated throttling, so its
+numbers differ from LaunchScope's measured runs. Scores below the `lighthouseScore` budget (0.9
+warning, 0.5 critical; lower is worse) become `lighthouse-score` findings. Signed-in pages work
+with `--storage-state` (cookies are loaded and Lighthouse's storage reset is disabled); `--header`
+values are not passed to Lighthouse because it would send them to every origin.
+
 ### Mobile and slow networks
 
 ```sh
@@ -308,7 +324,8 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 │   ├── trace.json      hop tree, API chains, critical path
 │   ├── trace.txt       the hop tree as text (◆ = critical path)
 │   ├── loads.json      every run with every request and its metrics
-│   └── page.har        HAR of the first cold run, redacted, without bodies
+│   ├── page.har        HAR of the first cold run, redacted, without bodies
+│   └── lighthouse.html Lighthouse report (with --lighthouse)
 └── stress/             only with --stress
     ├── stress.json     stages, per-hop stats, per-second timeline, insights
     ├── k6-script.js    with --export-k6

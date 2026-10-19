@@ -58,7 +58,7 @@ export function renderHtmlReport({ summary, details }) {
 <header class="top">
   <div class="brand">${LOGO}<div><p class="eyebrow">${e(BRAND.name)} performance report</p><h1>${e(host)}</h1></div></div>
   <p class="meta">${e(summary.target)} · ${e(formatDate(summary.startedAt))} · ${e(describeSettings(summary.settings))}</p>
-  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
+  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${summary.lighthouse ? '<a href="#lighthouse">Lighthouse</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
 </header>
 <main id="main">
 ${renderSummary(summary, routes)}
@@ -67,6 +67,7 @@ ${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
 ${renderEndpoints(endpoints, summary.openapi)}
 ${summary.navigations ? renderNavigations(summary.navigations) : ''}
 ${summary.browsers ? renderBrowsers(summary.browsers, routes) : ''}
+${summary.lighthouse ? renderLighthouse(summary.lighthouse, summary.settings.device) : ''}
 ${stress ? renderStress(stress) : ''}
 ${summary.comparison ? renderComparison(summary.comparison) : ''}
 ${renderMethod()}
@@ -712,5 +713,34 @@ function renderBrowsers(browsers, chromium) {
 <tr>${names.map(() => '<th scope="col">Load</th><th scope="col">LCP</th><th scope="col">Errors</th>').join('')}</tr></thead>
 <tbody>${rows}</tbody></table></div>
 <p class="files">Files: <a href="browsers.json">browsers.json</a></p>
+</section>`;
+}
+
+/**
+ * @param {import('../lighthouse-phase.js').LighthouseRouteResult[]} results
+ * @param {string} device
+ * @returns {string}
+ */
+function renderLighthouse(results, device) {
+  const rows = results
+    .map((result) => {
+      if (result.error) {
+        return `<tr><th scope="row">${e(routeLabel(result.url))}</th><td colspan="7" class="bad">${e(result.error)}</td></tr>`;
+      }
+      const score = result.score === null ? '–' : String(Math.round(result.score * 100));
+      const scoreCell =
+        result.score !== null && result.score < 0.5
+          ? `<td class="bad">${e(score)}</td>`
+          : result.score !== null && result.score >= 0.9
+            ? `<td class="good">${e(score)}</td>`
+            : `<td>${e(score)}</td>`;
+      return `<tr><th scope="row">${e(routeLabel(result.url))}</th>${scoreCell}<td>${ms(result.metrics.fcpMs)}</td><td>${ms(result.metrics.lcpMs)}</td><td>${ms(result.metrics.tbtMs)}</td><td>${result.metrics.cls === null || result.metrics.cls === undefined ? '–' : e(result.metrics.cls.toFixed(3))}</td><td>${ms(result.metrics.speedIndexMs)}</td><td>${result.report ? `<a href="${e(result.report)}">report</a>` : '–'}</td></tr>`;
+    })
+    .join('');
+  return `<section id="lighthouse" aria-labelledby="lighthouse-h"><h2 id="lighthouse-h">Lighthouse</h2>
+<p class="lede">One Lighthouse performance audit per route with Lighthouse's ${e(device)} preset and its own simulated throttling, so its numbers differ from LaunchScope's measured runs. Scores below 50 and 90 or above are marked.</p>
+<div class="table-wrap"><table><caption>Lighthouse performance (lab)</caption>
+<thead><tr><th scope="col">Route</th><th scope="col">Score</th><th scope="col">FCP</th><th scope="col">LCP</th><th scope="col">TBT</th><th scope="col">CLS</th><th scope="col">Speed Index</th><th scope="col">Full report</th></tr></thead>
+<tbody>${rows}</tbody></table></div>
 </section>`;
 }
