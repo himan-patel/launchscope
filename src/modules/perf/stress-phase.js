@@ -4,7 +4,7 @@ import { formatDuration } from '../../core/duration.js';
 import { writeJsonFile } from '../../core/report-dir.js';
 import { analyzeStress } from './stress/analyze.js';
 import { runStress } from './stress/runner.js';
-import { buildScenarios, loadCookieJar } from './stress/scenario.js';
+import { apiScenario, buildScenarios, loadCookieJar } from './stress/scenario.js';
 
 /**
  * @typedef {object} StressPhaseResult
@@ -20,17 +20,26 @@ import { buildScenarios, loadCookieJar } from './stress/scenario.js';
  * @param {object} options
  * @param {import('./settings.js').PerfSettings} options.settings
  * @param {import('./measure-routes.js').RouteRecord[]} options.routes
+ * @param {import('./discover/openapi.js').ApiOperation[]} [options.apiOperations] Replayed as one extra scenario.
  * @param {string} options.perfDirectory
  * @param {import('../../core/logger.js').Logger} options.logger
  * @param {AbortSignal} options.signal
  * @returns {Promise<StressPhaseResult | null>}
  */
-export async function runStressPhase({ settings, routes, perfDirectory, logger, signal }) {
+export async function runStressPhase({
+  settings,
+  routes,
+  apiOperations = [],
+  perfDirectory,
+  logger,
+  signal,
+}) {
   const { paint } = logger;
   const scenarios = buildScenarios(routes, {
     targetOrigin: settings.targetUrl.origin,
     includeAssets: settings.stress.includeAssets,
   });
+  if (apiOperations.length > 0) scenarios.push(apiScenario(apiOperations));
   if (scenarios.length === 0) {
     logger.warn('Skipping the stress test: no route loaded successfully on the target origin.');
     return null;

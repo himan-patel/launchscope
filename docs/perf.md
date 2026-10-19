@@ -103,6 +103,24 @@ launchscope perf https://staging.example.com --depth 2 --max-routes 40 --exclude
 
 Logout links are never followed, whatever you configure.
 
+### Measure API endpoints from an OpenAPI spec
+
+```sh
+launchscope perf http://localhost:3000 --openapi auto                   # /openapi.json, /v3/api-docs, …
+launchscope perf http://localhost:3000 --openapi ./openapi.json
+launchscope perf http://localhost:3000 --openapi http://localhost:3000/docs/spec.json
+```
+
+LaunchScope reads the OpenAPI 3.x or Swagger 2.0 document (JSON) and measures every **GET**
+operation on the target origin directly over HTTP, `--runs` times each, with the same headers
+and session cookies as the browser. That covers endpoints no page calls. Path and required query
+parameters need an `example`, `examples`, `default`, or `enum` value; operations without one, and
+all non-GET or deprecated operations, are listed as skipped instead of being called with
+invented input. Results join the endpoint statistics and findings (the report marks endpoints as
+"page", "API spec only", or both), are replayed by `--stress`, and are listed in `openapi.json`.
+DNS, connect, and TLS are reported together as "connect" for these direct calls. YAML specs are
+not supported yet.
+
 ### Measure pages behind a login
 
 Sign in once in a real browser window (SSO and MFA work), then reuse the saved session:
@@ -216,6 +234,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 ├── endpoints.json      per-endpoint statistics
 ├── routes.json         measured routes and why other URLs were skipped
 ├── settings.json       the resolved settings (header values redacted)
+├── openapi.json        operations measured from the OpenAPI spec and why others were skipped
 ├── routes.csv          one row per route
 ├── endpoints.csv       one row per endpoint
 ├── routes/<route>/
@@ -433,6 +452,7 @@ with `--config`). CLI flags override it. Strings may reference environment varia
   "perf": {
     "routes": ["/", "/pricing", "/app/dashboard"],
     "maxRoutes": 25,
+    "openapi": "auto",
     "depth": 1,
     "sitemap": true,
     "exclude": ["/blog/", "\\.pdf$"],

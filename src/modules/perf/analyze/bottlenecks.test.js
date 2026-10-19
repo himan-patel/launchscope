@@ -86,6 +86,7 @@ function endpoint(overrides = {}) {
     graphqlOperation: null,
     graphqlType: null,
     streaming: false,
+    discoveredBy: ['page'],
     ...overrides,
   };
 }

@@ -8,6 +8,7 @@ import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
 import { compareRuns, loadBaseline, regressionFindings } from './analyze/compare.js';
 import { countBySeverity, RunAccumulator } from './analyze/index.js';
+import { runApiPhase } from './api-phase.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
 import { measureRoutes } from './measure-routes.js';
 import { writeReport } from './report/write-report.js';
@@ -109,11 +110,19 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     signal,
     accumulator,
   });
+  const api = await runApiPhase({ settings, logger, perfDirectory, signal, accumulator });
   const analysis = accumulator.finish(settings.budgets);
 
   const stress =
     settings.stress.enabled && !signal.aborted
-      ? await runStressPhase({ settings, routes, perfDirectory, logger, signal })
+      ? await runStressPhase({
+          settings,
+          routes,
+          apiOperations: api?.plan.operations ?? [],
+          perfDirectory,
+          logger,
+          signal,
+        })
       : null;
   const comparison = baseline
     ? compareRuns({
@@ -143,6 +152,14 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
     comparison,
+    openapi: api
+      ? {
+          source: api.plan.source,
+          title: api.plan.title,
+          measured: api.plan.operations.length,
+          skipped: api.plan.skipped,
+        }
+      : null,
     skippedUrls: skipped,
   };
   await writeJsonFile(join(perfDirectory, 'summary.json'), summary);

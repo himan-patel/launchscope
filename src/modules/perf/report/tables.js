@@ -87,6 +87,7 @@ export function endpointsCsv(endpoints) {
       'largest_json_array',
       'graphql_operation',
       'graphql_type',
+      'discovered_by',
       'status_counts',
       'server_timing',
     ],
@@ -112,6 +113,7 @@ export function endpointsCsv(endpoints) {
       endpoint.largestJsonArray,
       endpoint.graphqlOperation,
       endpoint.graphqlType,
+      (endpoint.discoveredBy ?? ['page']).join(' '),
       Object.entries(endpoint.statusCounts)
         .map(([status, count]) => `${status}:${count}`)
         .join(' '),

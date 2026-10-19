@@ -64,7 +64,7 @@ export function renderHtmlReport({ summary, details }) {
 ${renderSummary(summary, routes)}
 ${renderFindings(findings)}
 ${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
-${renderEndpoints(endpoints)}
+${renderEndpoints(endpoints, summary.openapi)}
 ${stress ? renderStress(stress) : ''}
 ${summary.comparison ? renderComparison(summary.comparison) : ''}
 ${renderMethod()}
@@ -291,8 +291,9 @@ ${renderTraces(route.traces, traceUrlTemplate)}
 
 /**
  * @param {import('../analyze/endpoints.js').EndpointSummary[]} endpoints
+ * @param {{ source: string, measured: number, skipped: Array<{ method: string, path: string, reason: string }> } | null | undefined} openapi
  */
-function renderEndpoints(endpoints) {
+function renderEndpoints(endpoints, openapi) {
   const chart = endpointLatencyChart(endpoints);
   const rows = endpoints
     .map((endpoint) => {
@@ -311,15 +312,17 @@ function renderEndpoints(endpoints) {
 <td>${bytes(endpoint.bodyBytes?.p50)}</td><td>${endpoint.compressed ? 'yes' : '<span class="bad">no</span>'}</td>
 <td>${endpoint.largestJsonArray === null ? '–' : num(endpoint.largestJsonArray)}</td>
 <td>${e(statuses || '–')}</td><td>${e(timing || '–')}</td>
+<td>${e(sourceLabel(endpoint.discoveredBy))}</td>
 </tr>`;
     })
     .join('');
   return `<section id="endpoints" aria-labelledby="endpoints-h"><h2 id="endpoints-h">Endpoints</h2>
 <p class="lede">Every page and API call across all routes, grouped by method and path template. Timing excludes failed calls.</p>
+${renderOpenApiNote(openapi)}
 ${chart ? `<figure class="chart">${inlineSvg(chart)}<figcaption class="muted">Values for every endpoint are in the table below.</figcaption></figure>` : ''}
 <div class="table-wrap"><table>
 <caption>Endpoint statistics</caption>
-<thead><tr><th scope="col">Endpoint</th><th scope="col">Type</th><th scope="col">Calls</th><th scope="col">Routes</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Server wait p50</th><th scope="col">Size p50</th><th scope="col">Compressed</th><th scope="col">JSON items</th><th scope="col">Status</th><th scope="col">Server-Timing</th></tr></thead>
+<thead><tr><th scope="col">Endpoint</th><th scope="col">Type</th><th scope="col">Calls</th><th scope="col">Routes</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Server wait p50</th><th scope="col">Size p50</th><th scope="col">Compressed</th><th scope="col">JSON items</th><th scope="col">Status</th><th scope="col">Server-Timing</th><th scope="col">Found by</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 </section>`;
 }
@@ -617,4 +620,30 @@ function renderTraces(traces, template) {
     })
     .join(' · ');
   return `<p class="files">Backend traces: ${items}</p>`;
+}
+
+/**
+ * @param {Array<'page' | 'openapi'> | undefined} sources
+ * @returns {string}
+ */
+function sourceLabel(sources) {
+  if (!sources || sources.length === 0) return 'page';
+  if (sources.length === 2) return 'page + API spec';
+  return sources[0] === 'openapi' ? 'API spec only' : 'page';
+}
+
+/**
+ * @param {{ source: string, measured: number, skipped: Array<{ method: string, path: string, reason: string }> } | null | undefined} openapi
+ * @returns {string}
+ */
+function renderOpenApiNote(openapi) {
+  if (!openapi) return '';
+  const skipped = openapi.skipped
+    .map(
+      (entry) =>
+        `<li><code>${e(`${entry.method} ${entry.path}`)}</code> <span class="muted">${e(entry.reason)}</span></li>`,
+    )
+    .join('');
+  return `<p>${num(openapi.measured)} GET operation(s) from <code>${e(openapi.source)}</code> were also measured directly. Endpoints marked "API spec only" are not called by any measured page.</p>
+${skipped ? `<details><summary>${num(openapi.skipped.length)} operation(s) not called</summary><ul class="path">${skipped}</ul></details>` : ''}`;
 }

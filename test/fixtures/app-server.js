@@ -91,6 +91,35 @@ const LIVE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><t
   fetch('/api/me');
 </script></body></html>`;
 
+const OPENAPI = JSON.stringify({
+  openapi: '3.0.3',
+  info: { title: 'Fixture API', version: '1.0.0' },
+  servers: [{ url: '/' }],
+  components: {
+    parameters: {
+      ItemId: { name: 'id', in: 'path', required: true, schema: { type: 'integer', example: 42 } },
+    },
+  },
+  paths: {
+    '/api/me': { get: { operationId: 'getMe' } },
+    '/api/items/{id}': {
+      parameters: [{ $ref: '#/components/parameters/ItemId' }],
+      get: { operationId: 'getItem' },
+    },
+    '/api/projects': {
+      get: { parameters: [{ name: 'owner', in: 'query', required: true, example: 7 }] },
+    },
+    '/api/unlinked': { get: { operationId: 'unlinked' } },
+    '/api/orders/{orderId}': {
+      get: {
+        parameters: [{ name: 'orderId', in: 'path', required: true, schema: { type: 'string' } }],
+      },
+    },
+    '/api/orders': { post: { operationId: 'createOrder' } },
+    '/api/legacy': { get: { deprecated: true } },
+  },
+});
+
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
 const HERO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#4F46E5"/></svg>`;
@@ -191,6 +220,11 @@ export async function startFixtureServer() {
           /(?:^|;\s*)session=valid(?:;|$)/.test(request.headers.cookie ?? '');
         return authorized ? html(PRIVATE_HTML) : send(401, 'text/plain', 'unauthorized');
       }
+      case '/openapi.json':
+        return send(200, 'application/json', OPENAPI);
+      case '/api/unlinked':
+        await new Promise((resolve) => setTimeout(resolve, 120));
+        return send(200, 'application/json', JSON.stringify({ ok: true }));
       case '/live':
         return html(LIVE_HTML);
       case '/events': {

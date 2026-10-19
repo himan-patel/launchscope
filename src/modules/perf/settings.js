@@ -47,6 +47,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
+ * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
  * @property {StressSettings} stress
  */
 
@@ -116,6 +117,7 @@ const CONFIG_KEYS = new Set([
   'budgets',
   'baseline',
   'traceContext',
+  'openapi',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -150,6 +152,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [baseline]
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
+ * @property {string} [openapi]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -225,6 +228,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     budgets: resolveBudgets(section.budgets),
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),
+    openapi: resolveOpenApi(cli.openapi ?? section.openapi, cwd),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -575,4 +579,18 @@ function resolveTraceContext(cli, config) {
     }
   }
   return { enabled, urlTemplate };
+}
+
+/**
+ * @param {unknown} value
+ * @param {string} cwd
+ * @returns {string | undefined} `auto`, an http(s) URL, or an absolute file path.
+ */
+function resolveOpenApi(value, cwd) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new UsageError('--openapi must be "auto", a URL, or a path to an OpenAPI JSON file.');
+  }
+  if (value === 'auto' || /^https?:\/\//i.test(value)) return value;
+  return resolve(cwd, value);
 }

@@ -78,6 +78,27 @@ export function buildScenarios(routes, { targetOrigin, includeAssets }) {
 }
 
 /**
+ * A scenario that calls every measured OpenAPI operation in parallel, so endpoints no page calls
+ * are also tested under load.
+ *
+ * @param {import('../discover/openapi.js').ApiOperation[]} operations
+ * @returns {Scenario}
+ */
+export function apiScenario(operations) {
+  return {
+    slug: '(openapi)',
+    url: operations[0]?.url ?? '',
+    levels: [
+      operations.map((operation) => ({
+        url: operation.url,
+        label: `GET ${templatePath(new URL(operation.url).pathname)}`,
+        kind: /** @type {const} */ ('api'),
+      })),
+    ],
+  };
+}
+
+/**
  * Builds the Cookie header for a URL from a Playwright storage-state file, so the stress test
  * runs with the same session as the browser measurements. Cookie values stay in memory.
  *
