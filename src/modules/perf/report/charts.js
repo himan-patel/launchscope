@@ -11,7 +11,7 @@ import {
   waterfallChart,
 } from './svg.js';
 
-const MAX_WATERFALL_ROWS = 60;
+export const MAX_WATERFALL_ROWS = 150;
 const MAX_ENDPOINT_ROWS = 15;
 
 /**
@@ -48,7 +48,15 @@ export function routeWaterfall({ routeLabel, trace, load }) {
   const markers = [];
   if (load.vitals?.fcpMs) markers.push({ label: 'FCP', atMs: load.vitals.fcpMs });
   if (load.vitals?.lcpMs) markers.push({ label: 'LCP', atMs: load.vitals.lcpMs });
-  return waterfallChart({ rows, markers, title: `Request waterfall for ${routeLabel}` });
+  const truncated =
+    trace.nodes.length > MAX_WATERFALL_ROWS
+      ? ` (first ${MAX_WATERFALL_ROWS} of ${trace.nodes.length} requests)`
+      : '';
+  return waterfallChart({
+    rows,
+    markers,
+    title: `Request waterfall for ${routeLabel}${truncated}`,
+  });
 }
 
 /**

@@ -44,7 +44,7 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
         cache: 'cold',
         run,
         collectLinks: first,
-        inspectJson: first,
+        inspectJson: true,
         screenshot: first,
       });
       loads.push(result.load);

@@ -236,7 +236,8 @@ p99, standard deviation). Tables show the median unless they say otherwise.
 
 ### Waterfall
 
-Each row is a request on the representative run. The lighter part of a bar is waiting (queueing,
+Each row is a request on the representative run (up to 150 rows; the heading says when more
+were left out, and every request is always in `trace.json`). The lighter part of a bar is waiting (queueing,
 DNS, connect, TLS, and server time until the first byte); the solid part is downloading. Rows on
 the critical path are bold and marked ◆. Vertical lines mark FCP and LCP. Hover a bar for the
 full URL, status, size, and phase-by-phase timing.

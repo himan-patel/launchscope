@@ -20,6 +20,13 @@ All notable changes to this project are documented here. The format follows
   the critical path, and stress replays, and iframe requests are counted per route. New findings:
   `websocket-failed` and `iframe-weight`.
 
+### Changed
+
+- JSON payload shapes are summarized on every cold run (not only the first), so collection sizes
+  reflect all measured loads.
+- Waterfalls show up to 150 requests (was 60) and say how many were left out; every request is
+  always in `trace.json`.
+
 ### Fixed
 
 - Pages with a server-sent event stream or other never-ending response no longer wait the full

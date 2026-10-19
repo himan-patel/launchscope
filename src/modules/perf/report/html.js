@@ -5,6 +5,7 @@ import {
   bytesByTypeChart,
   endpointLabel,
   endpointLatencyChart,
+  MAX_WATERFALL_ROWS,
   routeLabel,
   routeWaterfall,
   stressCharts,
@@ -275,7 +276,7 @@ ${renderRealtime(route.realtime)}
 <p class="lede">The chain of requests that decided when the last request finished (${e(formatDuration(trace.criticalPath?.totalMs ?? 0))}).</p>
 <ol class="path">${critical}</ol>
 ${chains ? `<h4>Sequential API chains <span class="muted">(inferred from timing and call stacks)</span></h4><ul class="path">${chains}</ul>` : ''}
-<h4>Waterfall <span class="muted">(representative run ${e(load.run)})</span></h4>
+<h4>Waterfall <span class="muted">(representative run ${e(load.run)}${trace.nodes.length > MAX_WATERFALL_ROWS ? `, first ${MAX_WATERFALL_ROWS} of ${trace.nodes.length} requests; all are in trace.json` : ''})</span></h4>
 <figure class="chart">${inlineSvg(routeWaterfall({ routeLabel: label, trace, load }))}</figure>
 <details><summary>Hop tree</summary><pre>${e(renderTraceTree(trace).join('\n'))}</pre></details>
 <p class="files">Files: ${files}</p>

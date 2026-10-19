@@ -111,6 +111,23 @@ describe('launchscope perf analysis (fixture app, real Chromium)', () => {
     assert.equal(duplicate.evidence.identicalCalls, 2);
   });
 
+  it('summarizes JSON payload shape on every cold run, not just the first', async () => {
+    const [runName] = await readdir(join(workdir, 'out'));
+    const loads = JSON.parse(
+      await readFile(
+        join(workdir, 'out', runName, 'perf', 'routes', 'dashboard', 'loads.json'),
+        'utf8',
+      ),
+    );
+    assert.equal(loads.length, 2);
+    for (const load of loads) {
+      const projects = load.requests.find((/** @type {{ url: string }} */ r) =>
+        r.url.includes('/api/projects'),
+      );
+      assert.equal(projects.jsonShape?.largestArrayLength, 2000, `run ${load.run}`);
+    }
+  });
+
   it('detects the redirect and missing static cache headers', () => {
     assert.ok(
       findingsFor('redirect').some(

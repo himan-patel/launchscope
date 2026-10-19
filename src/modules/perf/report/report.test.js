@@ -177,3 +177,44 @@ describe('renderHtmlReport', () => {
     assert.match(markdown, /🔴 \*\*critical\*\*/);
   });
 });
+
+describe('routeWaterfall', () => {
+  it('caps rows and says how many requests were left out', async () => {
+    const { routeWaterfall, MAX_WATERFALL_ROWS } = await import('./charts.js');
+    const nodes = Array.from({ length: MAX_WATERFALL_ROWS + 25 }, (_, index) => ({
+      id: String(index),
+      parentId: index === 0 ? null : '0',
+      dependsOnId: null,
+      childIds: [],
+      depth: index === 0 ? 0 : 1,
+      url: `https://app.test/asset-${index}.js`,
+      method: 'GET',
+      resourceType: index === 0 ? 'Document' : 'Script',
+      status: 200,
+      startMs: index,
+      endMs: index + 5,
+      durationMs: 5,
+      transferBytes: 100,
+      bodyBytes: 100,
+      thirdParty: false,
+      failed: false,
+      redirectCount: 0,
+      cacheControl: null,
+      redirectedFrom: null,
+      graphqlOperation: null,
+      streaming: false,
+      isMainFrame: true,
+      serverTiming: [],
+    }));
+    const chart = routeWaterfall({
+      routeLabel: '/big',
+      trace: { rootId: '0', nodes, chains: [], criticalPath: null },
+      load: /** @type {any} */ ({ requests: [], vitals: null }),
+    });
+    assert.equal(
+      chart.title,
+      `Request waterfall for /big (first ${MAX_WATERFALL_ROWS} of ${MAX_WATERFALL_ROWS + 25} requests)`,
+    );
+    assert.equal((chart.body.match(/<g data-tip=/g) ?? []).length, MAX_WATERFALL_ROWS);
+  });
+});
