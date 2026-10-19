@@ -19,6 +19,11 @@ All notable changes to this project are documented here. The format follows
   desktop/mobile profiles, 4G/3G throttling, warm-cache runs, installed browser channels, and
   extra headers sent to the target origin only. Per-route `loads.json` and `screenshot.png` are
   written to the report directory.
+- Hop tracing for `perf`: each route's representative (median) load becomes a request tree
+  (document → stylesheets/scripts → API calls) built from CDP initiators, with redirect hops,
+  third-party marking, and parsed `Server-Timing` metrics. Sequential API chains
+  (`await fetch(a); await fetch(b)`) are inferred from timing and call stacks, and the critical
+  path to the last request is identified. Written as `trace.json` and a readable `trace.txt`.
 
 - `launchscope` CLI with branded help, `--version`, and global options for config, output
   directory, color, and verbosity.

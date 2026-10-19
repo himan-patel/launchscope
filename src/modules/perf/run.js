@@ -7,6 +7,7 @@ import { launchBrowser } from './capture/browser.js';
 import { measureRoute } from './measure.js';
 import { assignRouteSlugs } from './report/paths.js';
 import { toReportableSettings } from './settings.js';
+import { buildTrace, pickRepresentativeLoad, renderTraceTree } from './trace/hop-tree.js';
 
 /**
  * Runs the performance module end to end.
@@ -54,6 +55,30 @@ export async function runPerf(settings, runtime) {
         await writeFile(join(routeDirectory, 'screenshot.png'), measurement.screenshot);
       }
       logger.info(formatRouteLine(measurement, logger.paint));
+
+      const representative = pickRepresentativeLoad(measurement.loads);
+      if (representative) {
+        const trace = buildTrace(representative.requests, representative.finalUrl ?? url);
+        await writeJsonFile(join(routeDirectory, 'trace.json'), {
+          representativeRun: representative.run,
+          ...trace,
+        });
+        await writeFile(
+          join(routeDirectory, 'trace.txt'),
+          `${renderTraceTree(trace).join('\n')}\n`,
+        );
+        const [longest] = trace.chains;
+        if (longest) {
+          logger.info(
+            logger.paint.dim(
+              `      ↳ sequential API chain: ${longest.ids.length} calls, ${formatDuration(longest.totalMs)}`,
+            ),
+          );
+        }
+        logger.debug(
+          `Hop tree for ${url}:\n${renderTraceTree(trace, { maxNodes: 25 }).join('\n')}`,
+        );
+      }
     }
   } finally {
     await browser.close();
