@@ -1,35 +1,11 @@
 import assert from 'node:assert/strict';
-import { execFile } from 'node:child_process';
 import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
-import { fileURLToPath } from 'node:url';
-import { promisify } from 'node:util';
 import { after, before, describe, it } from 'node:test';
+import { runCli } from './helpers/run-cli.js';
 
-const execFileAsync = promisify(execFile);
-const BIN = fileURLToPath(new URL('../bin/launchscope.js', import.meta.url));
 const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
-
-/**
- * Runs the real CLI entry point as a child process.
- *
- * @param {string[]} args
- * @param {{ cwd?: string, env?: Record<string, string> }} [options]
- * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
- */
-async function runCli(args, { cwd, env = {} } = {}) {
-  try {
-    const { stdout, stderr } = await execFileAsync(process.execPath, [BIN, ...args], {
-      cwd,
-      env: { PATH: process.env.PATH ?? '', NO_COLOR: '1', ...env },
-    });
-    return { code: 0, stdout, stderr };
-  } catch (error) {
-    const failure = /** @type {{ code: number, stdout: string, stderr: string }} */ (error);
-    return { code: failure.code, stdout: failure.stdout, stderr: failure.stderr };
-  }
-}
 
 describe('launchscope CLI', () => {
   /** @type {string} */

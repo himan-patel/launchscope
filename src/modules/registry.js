@@ -7,6 +7,8 @@
  * public roadmap. See docs/architecture.md for the full contract.
  */
 
+import { registerPerf } from './perf/index.js';
+
 /** @typedef {'available' | 'in-progress' | 'planned'} ModuleStatus */
 
 /**
@@ -35,6 +37,7 @@ export const CHECK_MODULES = Object.freeze([
     status: 'in-progress',
     summary:
       'Trace every route and API hop, measure real timings and payload sizes, find bottlenecks, and stress test.',
+    register: registerPerf,
   },
   {
     id: 'seo',

@@ -8,6 +8,10 @@ All notable changes to this project are documented here. The format follows
 
 ### Added
 
+- `launchscope perf <target>` command with route, measurement, authentication, stress, and output
+  options; settings merge CLI flags, the `perf` config section, and defaults with strict
+  validation (unknown config keys are rejected). `--dry-run` validates without a browser.
+
 - `launchscope` CLI with branded help, `--version`, and global options for config, output
   directory, color, and verbosity.
 - `launchscope modules` command listing available and planned check modules (`--json` supported).
