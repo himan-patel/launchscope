@@ -47,6 +47,11 @@ All notable changes to this project are documented here. The format follows
   and adds `slow-navigation` (budget `navigationMs`), `navigation-api-chain`,
   `full-reload-navigation`, and `navigation-failed` findings plus a report section.
 
+- Cross-browser comparison: `--browsers chromium,firefox,webkit` loads every measured route in
+  Firefox and/or WebKit and compares load, LCP, and errors with Chromium in a report section and
+  `browsers.json`; adds `browser-failed`, `browser-errors`, and `browser-slower` findings.
+  Missing browsers are skipped with a warning.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

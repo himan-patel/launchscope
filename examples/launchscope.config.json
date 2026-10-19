@@ -13,6 +13,7 @@
     "warmRuns": 1,
     "spa": true,
     "device": "desktop",
+    "browsers": ["chromium", "firefox"],
     "throttle": "none",
     "timeout": "45s",
     "storageState": ".auth/session.json",

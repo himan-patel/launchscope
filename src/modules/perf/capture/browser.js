@@ -31,18 +31,23 @@ const MOBILE_DEVICE = 'Pixel 7';
  * @typedef {import('playwright').BrowserContext} BrowserContext
  */
 
+/** @typedef {'chromium' | 'firefox' | 'webkit'} BrowserName */
+
 /**
- * Launches Chromium (or an installed Chrome/Edge channel) with actionable errors.
+ * Launches a browser with actionable errors: Chromium (or an installed Chrome/Edge channel) for
+ * the primary, fully detailed measurement, or Firefox/WebKit for cross-browser comparison.
  *
  * @param {import('../settings.js').PerfSettings} settings
+ * @param {BrowserName} [browserName]
  * @returns {Promise<{ browser: Browser, devices: typeof import('playwright').devices }>}
  */
-export async function launchBrowser(settings) {
+export async function launchBrowser(settings, browserName = 'chromium') {
   const playwright = await import('playwright');
+  const isChromium = browserName === 'chromium';
   try {
-    const browser = await playwright.chromium.launch({
+    const browser = await playwright[browserName].launch({
       headless: !settings.headed,
-      channel: settings.browserChannel,
+      channel: isChromium ? settings.browserChannel : undefined,
       // LaunchScope handles signals itself so an interrupted run can still write its report.
       handleSIGINT: false,
       handleSIGTERM: false,
@@ -54,13 +59,20 @@ export async function launchBrowser(settings) {
     if (
       /Executable doesn't exist|browserType\.launch: .*not found|is not found at/i.test(message)
     ) {
-      throw new LaunchScopeError('No browser is installed for LaunchScope to drive.', {
-        exitCode: ExitCode.USAGE,
-        hint: settings.browserChannel
-          ? `Install ${settings.browserChannel}, or run "npx playwright install chromium" and drop --browser-channel.`
-          : 'Run "npx playwright install chromium", or use an installed browser with --browser-channel chrome.',
-        cause: error,
-      });
+      throw new LaunchScopeError(
+        isChromium
+          ? 'No browser is installed for LaunchScope to drive.'
+          : `${browserName === 'firefox' ? 'Firefox' : 'WebKit'} is not installed for LaunchScope to drive.`,
+        {
+          exitCode: ExitCode.USAGE,
+          hint: !isChromium
+            ? `Run "npx playwright install ${browserName}".`
+            : settings.browserChannel
+              ? `Install ${settings.browserChannel}, or run "npx playwright install chromium" and drop --browser-channel.`
+              : 'Run "npx playwright install chromium", or use an installed browser with --browser-channel chrome.',
+          cause: error,
+        },
+      );
     }
     throw new LaunchScopeError(`Could not launch the browser: ${message.split('\n')[0]}`, {
       cause: error,
@@ -78,7 +90,7 @@ export async function launchBrowser(settings) {
  * @param {Browser} browser
  * @param {typeof import('playwright').devices} devices
  * @param {import('../settings.js').PerfSettings} settings
- * @param {{ harPath?: string, traces?: import('./trace-context.js').TraceRegistry }} [options]
+ * @param {{ harPath?: string, traces?: import('./trace-context.js').TraceRegistry, browserName?: BrowserName }} [options]
  *   `harPath` records a HAR (bodies omitted) written on context close; `traces` adds a
  *   `traceparent` header to target-origin requests.
  * @returns {Promise<BrowserContext>}
@@ -87,11 +99,11 @@ export async function createMeasurementContext(
   browser,
   devices,
   settings,
-  { harPath, traces } = {},
+  { harPath, traces, browserName = 'chromium' } = {},
 ) {
   if (settings.storageStatePath) await assertReadable(settings.storageStatePath);
 
-  const device = settings.device === 'mobile' ? devices[MOBILE_DEVICE] : undefined;
+  const device = settings.device === 'mobile' ? mobileProfile(devices, browserName) : undefined;
   const context = await browser.newContext({
     ...(device ?? { viewport: DESKTOP_VIEWPORT }),
     storageState: settings.storageStatePath,
@@ -115,6 +127,20 @@ export async function createMeasurementContext(
     );
   }
   return context;
+}
+
+/**
+ * The mobile device profile for a browser. Firefox cannot emulate mobile/touch, so it gets the
+ * same screen size and user agent without those flags.
+ *
+ * @param {typeof import('playwright').devices} devices
+ * @param {BrowserName} browserName
+ */
+function mobileProfile(devices, browserName) {
+  const { defaultBrowserType: _defaultBrowserType, ...profile } = devices[MOBILE_DEVICE];
+  if (browserName !== 'firefox') return profile;
+  const { isMobile: _isMobile, hasTouch: _hasTouch, ...firefoxProfile } = profile;
+  return firefoxProfile;
 }
 
 /**
