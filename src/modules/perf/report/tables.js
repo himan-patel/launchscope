@@ -25,6 +25,7 @@ export function routesCsv(routes) {
       'lcp_p95_ms',
       'cls_p50',
       'tbt_p50_ms',
+      'tti_p50_ms',
       'load_p50_ms',
       'requests_p50',
       'transfer_bytes_p50',
@@ -47,6 +48,7 @@ export function routesCsv(routes) {
         m.lcpMs?.p95,
         m.cls?.p50,
         m.tbtMs?.p50,
+        m.ttiMs?.p50,
         m.loadMs?.p50,
         m.requestCount?.p50,
         m.transferBytes?.p50,
@@ -226,11 +228,11 @@ export function summaryMarkdown(summary) {
     '',
     '## Routes',
     '',
-    '| Route | Status | TTFB | FCP | LCP | CLS | TBT | Requests | Transferred |',
-    '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+    '| Route | Status | TTFB | FCP | LCP | CLS | TBT | TTI | Requests | Transferred |',
+    '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
     ...routes.map((route) => {
       const m = route.metrics;
-      return `| ${md(routeLabel(route.url))} | ${route.error ? 'failed' : (route.status ?? '–')} | ${dur(m.ttfbMs?.p50)} | ${dur(m.fcpMs?.p50)} | ${dur(m.lcpMs?.p50)} | ${m.cls ? m.cls.p50.toFixed(3) : '–'} | ${dur(m.tbtMs?.p50)} | ${m.requestCount ? Math.round(m.requestCount.p50) : '–'} | ${size(m.transferBytes?.p50)} |`;
+      return `| ${md(routeLabel(route.url))} | ${route.error ? 'failed' : (route.status ?? '–')} | ${dur(m.ttfbMs?.p50)} | ${dur(m.fcpMs?.p50)} | ${dur(m.lcpMs?.p50)} | ${m.cls ? m.cls.p50.toFixed(3) : '–'} | ${dur(m.tbtMs?.p50)} | ${dur(m.ttiMs?.p50)} | ${m.requestCount ? Math.round(m.requestCount.p50) : '–'} | ${size(m.transferBytes?.p50)} |`;
     }),
     '',
     '## Slowest endpoints',

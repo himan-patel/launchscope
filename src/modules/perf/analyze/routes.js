@@ -21,6 +21,7 @@ import { summarize } from './stats.js';
  * @property {Distribution | null} lcpMs
  * @property {Distribution | null} cls
  * @property {Distribution | null} tbtMs
+ * @property {Distribution | null} ttiMs
  * @property {Distribution | null} domContentLoadedMs
  * @property {Distribution | null} loadMs
  * @property {Distribution | null} wallTimeMs
@@ -41,6 +42,8 @@ import { summarize } from './stats.js';
  * @property {number | null} status Main document status of the representative load.
  * @property {string | null} finalUrl
  * @property {{ cold: number, warm: number, failed: number }} runs
+ * @property {number} tbtLowerBoundRuns Cold runs where no TTI quiet window was observed before the
+ *   wait cap, so their TBT is the blocking time observed so far.
  * @property {string | null} error Set when every cold run failed.
  * @property {RouteMetrics} metrics Cold-cache distributions.
  * @property {RouteMetrics | null} warmMetrics
@@ -105,6 +108,9 @@ export function summarizeRoute({ url, slug, depth, source, loads, representative
     status: representative?.status ?? cold.find((load) => load.status !== null)?.status ?? null,
     finalUrl: representative?.finalUrl ?? null,
     runs: { cold: cold.length, warm: warm.length, failed: cold.length - coldOk.length },
+    tbtLowerBoundRuns: coldOk.filter(
+      (load) => typeof load.vitals?.tbtMs === 'number' && load.vitals.tbtComplete === false,
+    ).length,
     error: coldOk.length === 0 ? (cold[0]?.error ?? 'No successful runs') : null,
     metrics: computeMetrics(coldOk, pageOrigin),
     warmMetrics: warm.length > 0 ? computeMetrics(warm, pageOrigin) : null,
@@ -143,6 +149,7 @@ function computeMetrics(loads, pageOrigin) {
     lcpMs: pick((load) => load.vitals?.lcpMs),
     cls: pick((load) => load.vitals?.cls),
     tbtMs: pick((load) => load.vitals?.tbtMs),
+    ttiMs: pick((load) => load.vitals?.ttiMs),
     domContentLoadedMs: pick((load) => load.vitals?.domContentLoadedMs),
     loadMs: pick((load) => load.vitals?.loadMs),
     wallTimeMs: pick((load) => load.wallTimeMs),

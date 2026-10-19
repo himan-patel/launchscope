@@ -370,16 +370,17 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 All route metrics are distributions across cold runs (count, min, max, mean, p50, p75, p90, p95,
 p99, standard deviation). Tables show the median unless they say otherwise.
 
-| Metric                 | Meaning                                                                                 |
-| ---------------------- | --------------------------------------------------------------------------------------- |
-| TTFB                   | Time to the first byte of the page document (includes redirects, DNS, TLS, server time) |
-| FCP                    | First Contentful Paint: when the first text or image painted                            |
-| LCP                    | Largest Contentful Paint: when the largest element painted                              |
-| CLS                    | Cumulative Layout Shift: largest session window of unexpected layout shifts             |
-| TBT                    | Total Blocking Time: long-task time beyond 50 ms after FCP (lab approximation)          |
-| Load                   | The page's `load` event                                                                 |
-| Requests / Transferred | Requests per load and bytes on the wire (compressed)                                    |
-| API calls              | fetch/XHR requests per load                                                             |
+| Metric                 | Meaning                                                                                                                                                                       |
+| ---------------------- | ----------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| TTFB                   | Time to the first byte of the page document (includes redirects, DNS, TLS, server time)                                                                                       |
+| FCP                    | First Contentful Paint: when the first text or image painted                                                                                                                  |
+| LCP                    | Largest Contentful Paint: when the largest element painted                                                                                                                    |
+| CLS                    | Cumulative Layout Shift: largest session window of unexpected layout shifts                                                                                                   |
+| TTI                    | Time to Interactive: end of the last long task before the first 5 s window with no long tasks and at most two GET requests in flight (Lighthouse's definition; Chromium only) |
+| TBT                    | Total Blocking Time: long-task time beyond 50 ms between FCP and TTI (Lighthouse's definition; Chromium only)                                                                 |
+| Load                   | The page's `load` event                                                                                                                                                       |
+| Requests / Transferred | Requests per load and bytes on the wire (compressed)                                                                                                                          |
+| API calls              | fetch/XHR requests per load                                                                                                                                                   |
 
 ### Hop tree, API chains, and critical path
 
@@ -720,7 +721,12 @@ is in [`examples/github-actions.yml`](../examples/github-actions.yml).
 - **Local is not production.** Against `localhost`, sizes, request counts, chains, and payload
   findings carry over; absolute times usually do not (no real network, often a dev build).
   Measure a production build when you can.
-- **TBT is approximated** (long tasks after FCP until collection, not until Time to Interactive).
+- **TTI and TBT need a quiet window.** Each load stays open until a 5 s window with no long
+  tasks and at most two GET requests in flight has actually been observed after FCP (up to
+  20 s). A page that never goes quiet (constant polling or animation work) gets no TTI, and its
+  TBT is reported as a lower bound (`tbtComplete: false` per load, `tbtLowerBoundRuns` per route,
+  noted in the TBT finding). The calculation is tested against Lighthouse's own implementation.
+  Long tasks come from the Long Tasks API (tasks over 50 ms), so TTI and TBT are Chromium-only.
 - **API chains cover fetch and XMLHttpRequest.** Requests made from a Web Worker, a service
   worker, or WebSocket messages are measured but are not linked as dependencies. A dependency
   that goes through a timer (`setTimeout` after a response) is deliberately not linked.

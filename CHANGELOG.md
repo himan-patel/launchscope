@@ -22,6 +22,11 @@ All notable changes to this project are documented here. The format follows
   completion handlers, including promise continuations) issued each new request. The previous
   rule ("started within 100 ms after another call finished") is gone, so calls made from timers
   or independently are no longer reported as dependent. Request records gain `causedBy`.
+- TBT now follows Lighthouse's definition: long-task time beyond 50 ms between FCP and Time to
+  Interactive, instead of until the end of collection. Each load waits (up to 20 s) until a 5 s
+  CPU and network quiet window is observed. New `ttiMs` per load and route (report, CSV, and
+  Markdown); `tbtComplete` and `tbtLowerBoundRuns` flag pages that never went quiet. Verified
+  against Lighthouse's own TTI and TBT code on 500 generated loads.
 
 ## [0.3.0] - 2026-10-19
 
