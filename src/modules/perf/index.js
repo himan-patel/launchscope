@@ -89,6 +89,11 @@ export function registerPerf(program, services) {
     )
     .option('--stress-duration <duration>', 'duration of each stage (default: 10s)')
     .option('--stress-timeout <duration>', 'per-request timeout under stress (default: 10s)')
+    .option(
+      '--stress-replay <regex>',
+      'also replay same-origin POST/PUT/PATCH requests whose path matches (repeatable)',
+      collect,
+    )
     .option('--stress-include-assets', 'also replay same-origin scripts, styles, and images')
     .option('--allow-remote', 'allow stress testing a public host you own (use with care)')
     .optionsGroup('Output:')

@@ -3,6 +3,9 @@ import { capturePageLoad } from './capture/page-capture.js';
 import { TraceRegistry } from './capture/trace-context.js';
 import { redactHarFile } from './report/har.js';
 
+/** Methods that may be replayed when allowlisted. DELETE is never replayed. */
+export const REPLAYABLE_METHODS = new Set(['POST', 'PUT', 'PATCH']);
+
 /**
  * @typedef {object} RouteMeasurement
  * @property {string} url
@@ -31,6 +34,17 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
   /** @type {string[]} */
   let links = [];
   const traces = settings.traceContext.enabled ? new TraceRegistry() : undefined;
+  const targetOrigin = settings.targetUrl.origin;
+  const replay = settings.stress.enabled ? settings.stress.replay : [];
+  /** @param {{ url: string, method: string }} record */
+  const captureBody = (record) => {
+    if (replay.length === 0 || !REPLAYABLE_METHODS.has(record.method)) return false;
+    const url = new URL(record.url);
+    return (
+      url.origin === targetOrigin &&
+      replay.some((pattern) => pattern.test(`${url.pathname}${url.search}`))
+    );
+  };
 
   for (let run = 1; run <= settings.runs; run += 1) {
     const first = run === 1;
@@ -50,6 +64,7 @@ export async function measureRoute({ browser, devices, settings, url, harPath })
         inspectJson: true,
         screenshot: first,
         traces,
+        captureBody,
       });
       loads.push(result.load);
       if (first) {

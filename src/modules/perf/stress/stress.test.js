@@ -302,6 +302,7 @@ describe('runStress', () => {
     mode: 'closed',
     rates: [1],
     maxInFlight: 1000,
+    replay: [],
   };
 
   it('runs every stage and records per-stage and per-hop latency that grows with load', async () => {
@@ -428,6 +429,7 @@ describe('runStress in open (arrival-rate) mode', () => {
         mode: 'open',
         rates: [5, 60],
         maxInFlight: 8,
+        replay: [],
       },
       headers: {},
       cookieFor: () => undefined,

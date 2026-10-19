@@ -144,6 +144,7 @@ describe('resolvePerfSettings', () => {
       mode: 'closed',
       rates: [1, 5, 10, 25, 50],
       maxInFlight: 1000,
+      replay: [],
     });
     assert.throws(() => resolveWith({ cli: { stressStages: '10,5' } }), /strictly increasing/);
     assert.throws(() => resolveWith({ cli: { stressStages: '1,5000' } }), /from 1 to 1000/);

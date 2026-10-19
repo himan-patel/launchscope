@@ -106,7 +106,8 @@ launchscope-reports/<host>_<timestamp>/perf/
 - **Runs locally.** No account, no API key, no telemetry. Nothing leaves your machine except
   requests to the site you are checking.
 - **Safe by default.** Stress tests only target local and private addresses unless you pass
-  `--allow-remote`, and only send GET requests to the target origin.
+  `--allow-remote`, and only send GET requests to the target origin unless you allowlist specific
+  writes with `--stress-replay`.
 - **Reports you can share.** Response bodies are never stored; cookies, tokens, and auth headers
   are redacted; extra headers are only sent to the target origin.
 - **Evidence over opinions.** Every finding cites the measurements behind it, and inferred

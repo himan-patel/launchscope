@@ -47,12 +47,29 @@ export async function runStressPhase({
 
   const cookieFor = await loadCookieJar(settings.storageStatePath);
   logger.info('');
+  const replayed = new Set(
+    scenarios.flatMap((scenario) =>
+      scenario.levels
+        .flat()
+        .filter((request) => request.method && request.method !== 'GET')
+        .map((request) => request.label),
+    ),
+  );
   logger.info(
     paint.bold('Stress test') +
       paint.dim(
-        ` · ${scenarios.length} route scenario(s), GET requests to ${settings.targetUrl.origin} only`,
+        ` · ${scenarios.length} scenario(s), requests to ${settings.targetUrl.origin} only` +
+          (replayed.size ? '' : ', GET only'),
       ),
   );
+  if (replayed.size > 0) {
+    logger.warn(
+      `Replaying allowlisted writes with their recorded bodies: ${[...replayed].join(', ')}. These can create data on the target.`,
+    );
+  } else if (settings.stress.replay.length > 0) {
+    logger.warn('No request matched --stress-replay; the stress test sends GET requests only.');
+  }
+
   const result = await runStress({
     scenarios,
     settings: settings.stress,
