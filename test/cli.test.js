@@ -50,7 +50,7 @@ describe('launchscope CLI', () => {
     const result = await runCli(['modules'], { cwd: workdir });
     assert.equal(result.code, 0);
     assert.equal(result.stdout, '');
-    assert.match(result.stderr, /perf\s+in progress\s+Trace every route/);
+    assert.match(result.stderr, /perf\s+available\s+Trace every route/);
     assert.match(result.stderr, /security\s+planned/);
   });
 
@@ -62,7 +62,7 @@ describe('launchscope CLI', () => {
     assert.deepEqual(modules[0], {
       id: 'perf',
       title: 'Performance',
-      status: 'in-progress',
+      status: 'available',
       summary: modules[0].summary,
     });
   });

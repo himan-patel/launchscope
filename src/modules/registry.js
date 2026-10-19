@@ -34,7 +34,7 @@ export const CHECK_MODULES = Object.freeze([
   {
     id: 'perf',
     title: 'Performance',
-    status: 'in-progress',
+    status: 'available',
     summary:
       'Trace every route and API hop, measure real timings and payload sizes, find bottlenecks, and stress test.',
     register: registerPerf,

@@ -1,0 +1,53 @@
+# Example: run LaunchScope against your app on every pull request.
+# Copy to .github/workflows/launchscope.yml in YOUR app's repository and adjust the
+# "Start the app" step. The report is uploaded as a build artifact.
+name: Performance
+
+on:
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  perf:
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
+        with:
+          node-version: 22
+          cache: npm
+
+      - name: Build and start the app
+        run: |
+          npm ci
+          npm run build
+          npm run start &
+          npx --yes wait-on@9.5.1 http://localhost:3000
+
+      - name: Install LaunchScope
+        run: |
+          git clone --depth 1 https://github.com/himan-patel/launchscope.git "$RUNNER_TEMP/launchscope"
+          npm ci --prefix "$RUNNER_TEMP/launchscope"
+          "$RUNNER_TEMP/launchscope/node_modules/.bin/playwright" install --with-deps --only-shell chromium
+
+      - name: Measure performance
+        run: |
+          node "$RUNNER_TEMP/launchscope/bin/launchscope.js" \
+            --output-dir launchscope-reports \
+            perf http://localhost:3000 \
+            --runs 3 \
+            --fail-on critical \
+            --json > perf-summary.json
+
+      - name: Upload report
+        if: always()
+        uses: actions/upload-artifact@043fb46d1a93c77aae656e7c1c64a875d1fc6a0a # v7.0.1
+        with:
+          name: launchscope-report
+          path: launchscope-reports/

@@ -1,6 +1,6 @@
 {
   "name": "launchscope",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Launch-readiness checks for web apps. Performance first: trace every route and API hop, pinpoint bottlenecks, and stress test.",
   "keywords": [
     "launch",
