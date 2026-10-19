@@ -247,6 +247,25 @@ export function summaryMarkdown(summary) {
           `| \`${md(endpointLabel(endpoint))}\` | ${endpoint.calls} | ${dur(endpoint.durationMs?.p50)} | ${dur(endpoint.durationMs?.p95)} | ${dur(endpoint.waitMs?.p50)} | ${size(endpoint.bodyBytes?.p50)} |`,
       ),
   );
+  if (summary.repo?.verification) {
+    /** @type {import('../analyze/repo-verification.js').RepoVerification} */
+    const verification = summary.repo.verification;
+    const entries = [
+      ...verification.pages.map((entry) => ({ entry, kind: 'page' })),
+      ...verification.apis.map((entry) => ({ entry, kind: 'API' })),
+    ];
+    lines.push(
+      '',
+      '## Repository routes',
+      '',
+      '| Route | Kind | Result | Status | Note |',
+      '| --- | --- | --- | ---: | --- |',
+      ...entries.map(
+        ({ entry, kind }) =>
+          `| ${md(entry.route)} | ${kind} | ${entry.result.replace('-', ' ')} | ${entry.status ?? '–'} | ${md(entry.redirectedTo ? `redirected to ${entry.redirectedTo}` : (entry.reason ?? ''))} |`,
+      ),
+    );
+  }
   if (summary.navigations && summary.navigations.length > 0) {
     /** @type {import('../navigation-phase.js').NavigationSummary[]} */
     const navigations = summary.navigations;

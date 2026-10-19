@@ -27,6 +27,13 @@ All notable changes to this project are documented here. The format follows
   CPU and network quiet window is observed. New `ttiMs` per load and route (report, CSV, and
   Markdown); `tbtComplete` and `tbtLowerBoundRuns` flag pages that never went quiet. Verified
   against Lighthouse's own TTI and TBT code on 500 generated loads.
+- `--repo` reads Angular, React Router, and Express routes by parsing the source (new runtime
+  dependency `@babel/parser`) and following imports across files: nested `children`, lazy
+  `loadChildren` (route files and `RouterModule.forChild` modules), descendant `<Routes>`, and
+  Express mount prefixes. Child routes now keep their parent prefix; unresolvable code is listed
+  under `skipped` with the reason. Every repository route is verified against the live app
+  (`repo.json` → `verification`, a "Repository routes" report section, and a new
+  `repo-route-not-found` finding).
 
 ## [0.3.0] - 2026-10-19
 

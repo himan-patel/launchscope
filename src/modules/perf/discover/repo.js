@@ -1,14 +1,16 @@
 import { readdir, readFile, stat } from 'node:fs/promises';
 import { join, relative, sep } from 'node:path';
 import { UsageError } from '../../../core/errors.js';
+import { discoverCodeRoutes } from './code-routes.js';
 
 /**
  * Finds routes in an app's source code so pages that nothing links to still get measured.
  *
- * File-based routers are read from their directory conventions (exact). Code-based routers
- * (Angular, React Router, Express) are read with patterns over source files (best effort: nested
- * child routes are reported without their parent prefix). Dynamic segments are filled from
- * `routeParams`; routes that still need a value are skipped and reported, never guessed.
+ * File-based routers are read from their directory conventions. Code-based routers (Angular,
+ * React Router, Express) are read by parsing the source and following it across files
+ * (`code-routes.js`), so nested and lazily loaded routes keep their full prefix. Dynamic segments
+ * are filled from `routeParams`; routes that still need a value, and router code that cannot be
+ * resolved statically, are skipped and reported with the reason, never guessed.
  */
 
 const IGNORED_DIRECTORIES = new Set([
@@ -157,34 +159,15 @@ export async function discoverRepoRoutes({ root, routeParams }) {
     }
   }
 
-  // Code-based routers: patterns over source files.
-  for (const file of files.filter((candidate) => SOURCE_FILE.test(candidate))) {
-    const text = await readSmall(join(root, file));
-    if (!text) continue;
-    if (
-      /(?:\.routes|-routing\.module|app\.routes)\.ts$/.test(file) ||
-      (/@angular\/router/.test(text) && /Routes\b/.test(text))
-    ) {
-      for (const path of matchAll(text, /\bpath\s*:\s*['"`]([^'"`]*)['"`]/g)) {
-        if (path.includes('**')) continue;
-        add('page', angularSegments(path), file, 'angular');
-      }
-    } else if (/react-router/.test(text)) {
-      for (const path of [
-        ...matchAll(text, /<Route\b[^>]*\bpath\s*=\s*["'`]([^"'`]+)["'`]/g),
-        ...matchAll(text, /\bpath\s*:\s*['"`]([^'"`]+)['"`]/g),
-      ]) {
-        if (path === '*' || path.includes('*')) continue;
-        add('page', angularSegments(path), file, 'react-router');
-      }
-    }
-    if (/\bexpress\b|\bRouter\(\)/.test(text)) {
-      for (const path of matchAll(text, /\b(?:app|router|api)\.get\(\s*['"`](\/[^'"`]*)['"`]/g)) {
-        if (path.includes('*')) continue;
-        add('api', angularSegments(path), file, 'express');
-      }
-    }
+  // Code-based routers: parsed and followed across files.
+  const code = await discoverCodeRoutes({
+    root,
+    files: files.filter((candidate) => SOURCE_FILE.test(candidate)),
+  });
+  for (const route of code.routes) {
+    add(route.kind, angularSegments(route.path), route.file, route.framework);
   }
+  skipped.push(...code.skipped);
 
   return {
     frameworks: [...frameworks].sort(),
@@ -348,13 +331,4 @@ async function readSmall(path) {
   } catch {
     return null;
   }
-}
-
-/**
- * @param {string} text
- * @param {RegExp} pattern
- * @returns {string[]}
- */
-function matchAll(text, pattern) {
-  return [...text.matchAll(pattern)].map((match) => match[1]);
 }
