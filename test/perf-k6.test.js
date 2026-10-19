@@ -44,7 +44,7 @@ describe('launchscope perf --export-k6', () => {
       { cwd: workdir },
     );
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stderr, /k6 script: .*stress\/k6-script\.js/);
+    assert.match(result.stderr, /k6 script: .*stress[\\/]k6-script\.js/);
 
     const [runName] = await readdir(join(workdir, 'out'));
     const file = join(workdir, 'out', runName, 'perf', 'stress', 'k6-script.js');

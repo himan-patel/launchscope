@@ -77,6 +77,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Changed
 
+- CI runs the full suite (including real Chromium, Firefox, WebKit, and Lighthouse) on Ubuntu
+  (Node 22 and 24), macOS, and Windows; line endings are normalized to LF on every platform.
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
   and its raw loads are released, keeping only the representative load for the report and stress
   test (about 3.4× less heap on a 200-route synthetic run). `run.js` is split into
@@ -90,6 +92,8 @@ All notable changes to this project are documented here. The format follows
 
 ### Fixed
 
+- Lighthouse report links in the HTML report used the OS path separator and were broken on
+  Windows; report links always use `/`.
 - Pages with a server-sent event stream or other never-ending response no longer wait the full
   10-second settle timeout on every load.
 

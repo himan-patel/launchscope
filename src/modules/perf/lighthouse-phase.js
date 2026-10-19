@@ -149,8 +149,12 @@ async function auditRoute({ route, settings, lighthouse, desktopConfig, port, pe
     if (!lhr || lhr.runtimeError) {
       return failure(route, lhr?.runtimeError?.message ?? 'Lighthouse returned no result');
     }
-    const report = join('routes', route.slug, 'lighthouse.html');
-    await writeFile(join(perfDirectory, report), String(result.report?.[0] ?? result.report ?? ''));
+    // `report` is a link in the HTML report, so it always uses forward slashes.
+    const report = `routes/${route.slug}/lighthouse.html`;
+    await writeFile(
+      join(perfDirectory, 'routes', route.slug, 'lighthouse.html'),
+      String(result.report?.[0] ?? result.report ?? ''),
+    );
     return {
       url: route.url,
       slug: route.slug,

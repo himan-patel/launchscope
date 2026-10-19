@@ -53,7 +53,8 @@ and open an issue first for new modules so the scope can be agreed.
   example `feat(perf): add request waterfall` or `fix(config): reject empty outputDir`.
 - Update `CHANGELOG.md` under **Unreleased** for user-facing changes.
 - Update the README and docs when behavior, options, or output change.
-- CI must pass before merge.
+- CI must pass before merge. It runs on Ubuntu (Node 22 and 24), macOS, and Windows, so avoid
+  platform assumptions: build file paths with `node:path`, but always use `/` in report links.
 
 ## Reporting bugs and requesting features
 

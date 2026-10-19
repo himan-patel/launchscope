@@ -1,4 +1,5 @@
 import assert from 'node:assert/strict';
+import { resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { UsageError } from '../../core/errors.js';
 import {
@@ -124,7 +125,7 @@ describe('resolvePerfSettings', () => {
   it('resolves the storage state path against cwd', () => {
     assert.equal(
       resolveWith({ cli: { storageState: '.auth/state.json' } }).storageStatePath,
-      '/work/.auth/state.json',
+      resolve('/work', '.auth/state.json'),
     );
   });
 

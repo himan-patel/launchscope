@@ -151,8 +151,11 @@ describe('authenticated measurement with a saved session', () => {
       await browser.close();
     }
 
-    const mode = (await stat(savePath)).mode & 0o777;
-    assert.equal(mode, 0o600, `session file mode ${mode.toString(8)}`);
+    if (process.platform !== 'win32') {
+      // POSIX permission bits; Windows uses ACLs instead.
+      const mode = (await stat(savePath)).mode & 0o777;
+      assert.equal(mode, 0o600, `session file mode ${mode.toString(8)}`);
+    }
 
     const unauthenticated = await runCli(
       ['perf', server.origin, '--routes', '/private', '--runs', '1', '--output-dir', 'anon'],
