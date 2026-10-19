@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { registerLogin } from './commands/login.js';
 import { BRAND } from './core/brand.js';
 import { ExitCode, LaunchScopeError } from './core/errors.js';
 import { createLogger, createPalette, formatBanner, shouldUseColor } from './core/logger.js';
@@ -69,6 +70,8 @@ export function createProgram(io) {
       }
       writeModuleTable(runtime.logger);
     });
+
+  registerLogin(program, services);
 
   for (const checkModule of CHECK_MODULES) {
     checkModule.register?.(program, services);
