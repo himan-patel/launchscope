@@ -14,6 +14,7 @@
     "storageState": ".auth/session.json",
     "headers": { "Authorization": "Bearer ${STAGING_API_TOKEN}" },
     "failOn": "critical",
+    "baseline": "latest",
     "stress": {
       "stages": [1, 10, 25, 50],
       "duration": "15s",

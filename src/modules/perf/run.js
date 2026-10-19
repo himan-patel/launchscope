@@ -1,11 +1,12 @@
 import { mkdir } from 'node:fs/promises';
-import { join } from 'node:path';
+import { join, resolve } from 'node:path';
 import { BRAND } from '../../core/brand.js';
 import { formatDuration } from '../../core/duration.js';
 import { ExitCode, LaunchScopeError } from '../../core/errors.js';
 import { createInterruptController, INTERRUPTED_EXIT_CODE } from '../../core/interrupt.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
+import { compareRuns, loadBaseline, regressionFindings } from './analyze/compare.js';
 import { countBySeverity, RunAccumulator } from './analyze/index.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
 import { measureRoutes } from './measure-routes.js';
@@ -50,6 +51,21 @@ export async function runPerf(settings, runtime) {
     }
   }
 
+  const baseline = settings.baseline
+    ? await loadBaseline({
+        reference: settings.baseline,
+        outputDirectory: resolve(io.cwd, runtime.outputDir),
+        currentRunDirectory: runDirectory,
+      })
+    : null;
+  if (baseline) {
+    logger.info(`Baseline ${baseline.path} (${baseline.summary.startedAt})`);
+  } else if (settings.baseline === 'latest') {
+    logger.warn(
+      'No earlier completed run for this host was found; skipping the baseline comparison.',
+    );
+  }
+
   if (settings.dryRun) {
     logger.success(`Dry run: settings resolved and written to ${perfDirectory}`);
     return;
@@ -62,7 +78,13 @@ export async function runPerf(settings, runtime) {
       ),
   });
   try {
-    await measureAndReport({ settings, runtime, perfDirectory, signal: interrupt.signal });
+    await measureAndReport({
+      settings,
+      runtime,
+      perfDirectory,
+      baseline,
+      signal: interrupt.signal,
+    });
   } finally {
     interrupt.dispose();
   }
@@ -73,9 +95,10 @@ export async function runPerf(settings, runtime) {
  * @param {import('./settings.js').PerfSettings} options.settings
  * @param {import('../../runtime.js').Runtime} options.runtime
  * @param {string} options.perfDirectory
+ * @param {{ path: string, summary: any } | null} options.baseline
  * @param {AbortSignal} options.signal Aborted by Ctrl+C / SIGTERM.
  */
-async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
+async function measureAndReport({ settings, runtime, perfDirectory, baseline, signal }) {
   const { logger, io } = runtime;
   const startedAt = new Date();
   const accumulator = new RunAccumulator();
@@ -92,10 +115,19 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     settings.stress.enabled && !signal.aborted
       ? await runStressPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
-  if (stress) {
-    analysis.bottlenecks = sortFindings([...analysis.bottlenecks, ...stress.findings]);
-    analysis.totals.findings = countBySeverity(analysis.bottlenecks);
-  }
+  const comparison = baseline
+    ? compareRuns({
+        current: { routes: analysis.routes, endpoints: analysis.endpoints },
+        baseline: baseline.summary,
+        baselinePath: baseline.path,
+      })
+    : null;
+  analysis.bottlenecks = sortFindings([
+    ...analysis.bottlenecks,
+    ...(stress?.findings ?? []),
+    ...(comparison ? regressionFindings(comparison) : []),
+  ]);
+  analysis.totals.findings = countBySeverity(analysis.bottlenecks);
 
   const summary = {
     schemaVersion: 1,
@@ -110,6 +142,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     endpoints: analysis.endpoints,
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
+    comparison,
     skippedUrls: skipped,
   };
   await writeJsonFile(join(perfDirectory, 'summary.json'), summary);
@@ -138,6 +171,12 @@ async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
     `Measured ${routes.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
       (skippedText ? logger.paint.dim(` · skipped: ${skippedText}`) : ''),
   );
+  if (comparison) {
+    logger.info(
+      `Compared with baseline: ${comparison.counts.regressions} regression(s), ${comparison.counts.improvements} improvement(s)` +
+        logger.paint.dim(` · ${comparison.baseline.startedAt}`),
+    );
+  }
   writeFindings(analysis.bottlenecks, logger);
   logger.success(`Report: ${logger.paint.cyan(report.html)}`);
   logger.info(logger.paint.dim(`  All files: ${perfDirectory}`));

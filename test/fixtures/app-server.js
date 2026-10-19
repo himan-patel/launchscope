@@ -111,6 +111,7 @@ const SLOW_CONCURRENCY = 4;
  * @typedef {object} FixtureServer
  * @property {string} origin e.g. http://127.0.0.1:54321
  * @property {Map<string, number>} hits Request counts by pathname.
+ * @property {(ms: number) => void} setSlowDelay Changes how long /api/slow takes (default 250 ms).
  * @property {() => Promise<void>} close
  */
 
@@ -121,6 +122,7 @@ export async function startFixtureServer() {
   /** @type {Map<string, number>} */
   const hits = new Map();
   let slowActive = 0;
+  let slowDelayMs = 250;
   /** @type {Array<() => void>} */
   const slowQueue = [];
 
@@ -245,7 +247,7 @@ export async function startFixtureServer() {
       case '/api/slow': {
         await acquireSlowSlot();
         try {
-          await new Promise((resolve) => setTimeout(resolve, 250));
+          await new Promise((resolve) => setTimeout(resolve, slowDelayMs));
           return send(200, 'application/json', JSON.stringify({ ok: true }), {
             'server-timing': 'db;dur=230;desc="query", app;dur=15',
           });
@@ -287,6 +289,9 @@ export async function startFixtureServer() {
   return {
     origin: `http://127.0.0.1:${address.port}`,
     hits,
+    setSlowDelay: (ms) => {
+      slowDelayMs = ms;
+    },
     close: () =>
       new Promise((resolve, reject) => {
         for (const socket of upgraded) socket.destroy();

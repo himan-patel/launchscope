@@ -1,5 +1,6 @@
 import { formatBytes, formatDuration } from '../../../core/duration.js';
 import { endpointLabel, routeLabel } from './charts.js';
+import { format as formatMetric } from '../analyze/compare.js';
 import { toCsv } from './escape.js';
 
 /**
@@ -232,6 +233,40 @@ export function summaryMarkdown(summary) {
           `| \`${md(endpointLabel(endpoint))}\` | ${endpoint.calls} | ${dur(endpoint.durationMs?.p50)} | ${dur(endpoint.durationMs?.p95)} | ${dur(endpoint.waitMs?.p50)} | ${size(endpoint.bodyBytes?.p50)} |`,
       ),
   );
+  if (summary.comparison) {
+    /** @type {import('../analyze/compare.js').Comparison} */
+    const comparison = summary.comparison;
+    const rows = [
+      ...comparison.routes.map((entry) => ({ name: entry.route, changes: entry.changes })),
+      ...comparison.endpoints.map((entry) => ({
+        name: `\`${md(entry.endpoint)}\``,
+        changes: entry.changes,
+      })),
+    ].flatMap((entry) =>
+      entry.changes
+        .filter((change) => change.verdict !== 'unchanged')
+        .map(
+          (change) =>
+            `| ${entry.name} | ${change.label} | ${formatMetric(change.unit, change.before)} | ${formatMetric(change.unit, change.after)} | ${change.relative === null ? '–' : `${change.relative > 0 ? '+' : ''}${Math.round(change.relative * 100)}%`} | ${change.verdict === 'regression' ? '🔺 regression' : '🔻 improvement'} |`,
+        ),
+    );
+    lines.push(
+      '',
+      '## Compared with baseline',
+      '',
+      `Baseline from ${comparison.baseline.startedAt}: ${comparison.counts.regressions} regression(s), ${comparison.counts.improvements} improvement(s).`,
+      '',
+    );
+    if (rows.length > 0) {
+      lines.push(
+        '| Route / endpoint | Metric | Before | After | Change | |',
+        '| --- | --- | ---: | ---: | ---: | --- |',
+        ...rows,
+      );
+    } else {
+      lines.push('No significant changes.');
+    }
+  }
   if (summary.stress) {
     /** @type {import('../stress/runner.js').StageResult[]} */
     const stages = summary.stress.stages;
