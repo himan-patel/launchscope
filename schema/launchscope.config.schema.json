@@ -1,0 +1,249 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "$id": "https://raw.githubusercontent.com/himan-patel/launchscope/main/schema/launchscope.config.schema.json",
+  "title": "LaunchScope configuration",
+  "description": "Configuration for launchscope (launchscope.config.json). CLI flags override these values. Strings may reference environment variables as ${NAME}.",
+  "type": "object",
+  "additionalProperties": false,
+  "properties": {
+    "$schema": {
+      "type": "string",
+      "description": "Path or URL of this schema, for editor support."
+    },
+    "outputDir": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Base directory for run reports (default: launchscope-reports)."
+    },
+    "perf": { "$ref": "#/definitions/perf" }
+  },
+  "definitions": {
+    "duration": {
+      "description": "A duration such as 500ms, 10s, or 2m; a bare number is milliseconds.",
+      "oneOf": [
+        { "type": "string", "pattern": "^\\s*\\d+(?:\\.\\d+)?\\s*(?:ms|s|m)?\\s*$" },
+        { "type": "number", "exclusiveMinimum": 0 }
+      ]
+    },
+    "threshold": {
+      "description": "A bare number sets the warning level and keeps the default critical level.",
+      "oneOf": [
+        { "type": "number", "minimum": 0 },
+        {
+          "type": "object",
+          "additionalProperties": false,
+          "properties": {
+            "warning": { "type": "number", "minimum": 0 },
+            "critical": { "type": "number", "minimum": 0 }
+          }
+        }
+      ]
+    },
+    "regexList": {
+      "description": "Regular expressions (case-insensitive).",
+      "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+    },
+    "perf": {
+      "type": "object",
+      "description": "Settings for launchscope perf.",
+      "additionalProperties": false,
+      "properties": {
+        "routes": {
+          "description": "Routes to measure (paths or same-origin URLs). Disables the sitemap and crawling by default.",
+          "oneOf": [{ "type": "string" }, { "type": "array", "items": { "type": "string" } }]
+        },
+        "maxRoutes": { "type": "integer", "minimum": 1, "maximum": 500, "default": 10 },
+        "depth": {
+          "type": "integer",
+          "minimum": 0,
+          "maximum": 5,
+          "default": 1,
+          "description": "Link-crawl depth from the seeds."
+        },
+        "sitemap": { "type": "boolean", "description": "Read /sitemap.xml for routes." },
+        "exclude": {
+          "$ref": "#/definitions/regexList",
+          "description": "URLs matching these patterns are never visited."
+        },
+        "runs": {
+          "type": "integer",
+          "minimum": 1,
+          "maximum": 50,
+          "default": 3,
+          "description": "Cold-cache runs per route."
+        },
+        "warmRuns": { "type": "integer", "minimum": 0, "maximum": 20, "default": 0 },
+        "device": { "enum": ["desktop", "mobile"], "default": "desktop" },
+        "throttle": { "enum": ["none", "4g", "3g"], "default": "none" },
+        "timeout": {
+          "$ref": "#/definitions/duration",
+          "description": "Page load timeout (default 30s)."
+        },
+        "browserChannel": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Installed browser to use instead of bundled Chromium, e.g. chrome or msedge."
+        },
+        "browsers": {
+          "description": "Browsers to load routes in; Chromium is always included and primary.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "enum": ["chromium", "firefox", "webkit"] },
+              "minItems": 1
+            }
+          ]
+        },
+        "storageState": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Saved login session from launchscope login."
+        },
+        "headers": {
+          "type": "object",
+          "description": "Extra headers sent to the target origin only. Use ${ENV_VAR} for secrets.",
+          "additionalProperties": { "type": "string" }
+        },
+        "traceContext": {
+          "description": "Send W3C traceparent headers (one trace per page load) to the target origin.",
+          "oneOf": [
+            { "type": "boolean" },
+            {
+              "type": "object",
+              "additionalProperties": false,
+              "properties": {
+                "urlTemplate": {
+                  "type": "string",
+                  "pattern": "\\{traceId\\}",
+                  "description": "Link template for traces, e.g. https://tracing.example.com/trace/{traceId}."
+                }
+              }
+            }
+          ]
+        },
+        "openapi": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Measure GET operations from an OpenAPI JSON spec: \"auto\", a URL, or a file path."
+        },
+        "repo": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Path of the app repository to read routes from."
+        },
+        "routeParams": {
+          "type": "object",
+          "description": "Values for dynamic route segments, by parameter name.",
+          "additionalProperties": { "type": ["string", "number"] }
+        },
+        "spa": {
+          "type": "boolean",
+          "description": "Measure client-side navigations between measured routes."
+        },
+        "spaMax": { "type": "integer", "minimum": 1, "maximum": 100, "default": 20 },
+        "baseline": {
+          "type": "string",
+          "minLength": 1,
+          "description": "Compare with an earlier run: \"latest\" or a path to its summary.json, perf/ directory, or run directory."
+        },
+        "failOn": { "enum": ["none", "warning", "critical"], "default": "none" },
+        "exportK6": { "type": "boolean", "description": "Write stress/k6-script.js." },
+        "lighthouse": {
+          "type": "boolean",
+          "description": "Run Google Lighthouse per route (requires the optional lighthouse package)."
+        },
+        "stress": { "$ref": "#/definitions/stress" },
+        "budgets": { "$ref": "#/definitions/budgets" }
+      }
+    },
+    "stress": {
+      "type": "object",
+      "description": "Stress test settings (used with --stress).",
+      "additionalProperties": false,
+      "properties": {
+        "mode": {
+          "enum": ["closed", "open"],
+          "default": "closed",
+          "description": "closed: concurrent virtual users; open: fixed arrival rate."
+        },
+        "stages": {
+          "description": "Closed mode: concurrent users per stage, strictly increasing.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "type": "integer", "minimum": 1, "maximum": 1000 },
+              "minItems": 1,
+              "maxItems": 10
+            }
+          ]
+        },
+        "rates": {
+          "description": "Open mode: route replays started per second, per stage, strictly increasing.",
+          "oneOf": [
+            { "type": "string" },
+            {
+              "type": "array",
+              "items": { "type": "number", "exclusiveMinimum": 0, "maximum": 1000 },
+              "minItems": 1,
+              "maxItems": 10
+            }
+          ]
+        },
+        "duration": {
+          "$ref": "#/definitions/duration",
+          "description": "Duration of each stage (default 10s)."
+        },
+        "timeout": {
+          "$ref": "#/definitions/duration",
+          "description": "Per-request timeout (default 10s)."
+        },
+        "includeAssets": { "type": "boolean" },
+        "allowRemote": {
+          "type": "boolean",
+          "description": "Allow stress testing a public host you own or are authorized to test."
+        },
+        "maxErrorRate": {
+          "type": "number",
+          "exclusiveMinimum": 0,
+          "maximum": 1,
+          "default": 0.5,
+          "description": "Stop the stress test when a stage's error ratio exceeds this."
+        },
+        "maxInFlight": { "type": "integer", "minimum": 1, "maximum": 10000, "default": 1000 },
+        "replay": {
+          "$ref": "#/definitions/regexList",
+          "description": "Same-origin POST/PUT/PATCH request paths to replay with recorded bodies."
+        }
+      }
+    },
+    "budgets": {
+      "type": "object",
+      "description": "Thresholds that turn measurements into findings.",
+      "additionalProperties": false,
+      "properties": {
+        "lcpMs": { "$ref": "#/definitions/threshold" },
+        "fcpMs": { "$ref": "#/definitions/threshold" },
+        "ttfbMs": { "$ref": "#/definitions/threshold" },
+        "cls": { "$ref": "#/definitions/threshold" },
+        "tbtMs": { "$ref": "#/definitions/threshold" },
+        "apiP95Ms": { "$ref": "#/definitions/threshold" },
+        "serverWaitMs": { "$ref": "#/definitions/threshold" },
+        "apiPayloadBytes": { "$ref": "#/definitions/threshold" },
+        "jsonArrayItems": { "$ref": "#/definitions/threshold" },
+        "chainLength": { "$ref": "#/definitions/threshold" },
+        "pageWeightBytes": { "$ref": "#/definitions/threshold" },
+        "requestCount": { "$ref": "#/definitions/threshold" },
+        "duplicateCalls": { "$ref": "#/definitions/threshold" },
+        "navigationMs": { "$ref": "#/definitions/threshold" },
+        "lighthouseScore": {
+          "$ref": "#/definitions/threshold",
+          "description": "Minimum Lighthouse score (0–1); lower is worse."
+        },
+        "stressP95Ms": { "$ref": "#/definitions/threshold" },
+        "stressErrorRate": { "$ref": "#/definitions/threshold" }
+      }
+    }
+  }
+}

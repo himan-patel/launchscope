@@ -1,11 +1,15 @@
 {
+  "$schema": "../schema/launchscope.config.schema.json",
   "outputDir": "launchscope-reports",
   "perf": {
     "routes": ["/", "/pricing", "/app/dashboard"],
     "maxRoutes": 25,
     "openapi": "auto",
     "repo": ".",
-    "routeParams": { "slug": "hello-world", "id": "42" },
+    "routeParams": {
+      "slug": "hello-world",
+      "id": "42"
+    },
     "depth": 1,
     "sitemap": true,
     "exclude": ["/blog/", "\\.pdf$"],
@@ -17,7 +21,9 @@
     "throttle": "none",
     "timeout": "45s",
     "storageState": ".auth/session.json",
-    "headers": { "Authorization": "Bearer ${STAGING_API_TOKEN}" },
+    "headers": {
+      "Authorization": "Bearer ${STAGING_API_TOKEN}"
+    },
     "failOn": "critical",
     "baseline": "latest",
     "stress": {
@@ -33,7 +39,10 @@
       "replay": ["^/graphql$"]
     },
     "budgets": {
-      "lcpMs": { "warning": 2000, "critical": 3500 },
+      "lcpMs": {
+        "warning": 2000,
+        "critical": 3500
+      },
       "apiP95Ms": 400,
       "chainLength": 2
     }

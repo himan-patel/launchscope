@@ -71,6 +71,10 @@ All notable changes to this project are documented here. The format follows
   section, and raises `lighthouse-score` findings (budget `lighthouseScore`, lower is worse).
   Lighthouse is an optional peer dependency (`npm install lighthouse`, Node.js 22.19+).
 
+- JSON Schema for `launchscope.config.json` (`schema/launchscope.config.schema.json`, shipped in
+  the package) for editor autocomplete and validation; tests keep it in sync with the keys and
+  budgets the code accepts.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
