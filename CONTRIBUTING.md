@@ -5,7 +5,10 @@ pull request process.
 
 ## Development setup
 
-Requirements: Node.js 22.12 or newer (`.nvmrc` pins the major version) and npm.
+Requirements: Node.js 22.19 or newer and npm. The repo pins **22.23.3** in `.nvmrc` and
+`.node-version`: run `nvm install && nvm use` (macOS/Linux), `nvm install 22.23.3 && nvm use 22.23.3`
+(nvm-windows), or `fnm use` (any OS). `npm ci` refuses other unsupported versions
+(`engine-strict`), and `launchscope doctor` verifies the whole setup.
 
 ```sh
 git clone https://github.com/himan-patel/launchscope.git

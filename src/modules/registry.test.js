@@ -2,7 +2,7 @@ import assert from 'node:assert/strict';
 import { describe, it } from 'node:test';
 import { CHECK_MODULES } from './registry.js';
 
-const RESERVED_COMMANDS = new Set(['modules', 'login', 'help']);
+const RESERVED_COMMANDS = new Set(['modules', 'login', 'doctor', 'help']);
 const RESERVED_CONFIG_KEYS = new Set(['$schema', 'outputDir']);
 
 describe('CHECK_MODULES', () => {

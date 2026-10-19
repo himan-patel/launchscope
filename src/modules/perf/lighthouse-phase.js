@@ -49,7 +49,7 @@ export async function loadLighthouse() {
   } catch (error) {
     throw new LaunchScopeError('--lighthouse needs the optional "lighthouse" package.', {
       exitCode: 2,
-      hint: 'Install it next to LaunchScope with "npm install lighthouse" (requires Node.js 22.19 or newer).',
+      hint: 'Install it next to LaunchScope with "npm install lighthouse", then check with "launchscope doctor".',
       cause: error,
     });
   }

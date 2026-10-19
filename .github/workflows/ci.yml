@@ -14,19 +14,20 @@ concurrency:
 
 jobs:
   check:
-    name: Check (${{ matrix.os }}, Node ${{ matrix.node }})
+    name: Check (${{ matrix.os }}, Node ${{ matrix.node == 'nvmrc' && 'from .nvmrc' || matrix.node }})
     runs-on: ${{ matrix.os }}
     timeout-minutes: 20
     strategy:
       fail-fast: false
       matrix:
         os: [ubuntu-latest]
-        node: [22, 24]
+        # "nvmrc" uses the pinned version in .nvmrc (the one contributors use locally).
+        node: [nvmrc, 24]
         include:
           - os: macos-latest
-            node: 22
+            node: nvmrc
           - os: windows-latest
-            node: 22
+            node: nvmrc
     steps:
       - name: Check out
         uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -36,7 +37,8 @@ jobs:
       - name: Set up Node.js
         uses: actions/setup-node@820762786026740c76f36085b0efc47a31fe5020 # v7.0.0
         with:
-          node-version: ${{ matrix.node }}
+          node-version: ${{ matrix.node != 'nvmrc' && matrix.node || '' }}
+          node-version-file: ${{ matrix.node == 'nvmrc' && '.nvmrc' || '' }}
           cache: npm
 
       - name: Install dependencies
@@ -53,6 +55,9 @@ jobs:
 
       - name: Type-check
         run: npm run typecheck
+
+      - name: Doctor
+        run: node bin/launchscope.js doctor
 
       - name: Test
         run: npm test
