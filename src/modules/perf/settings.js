@@ -51,6 +51,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {FailOnLevel} failOn
  * @property {boolean} json
  * @property {boolean} dryRun Resolve settings and create the run directory without a browser.
+ * @property {boolean} exportK6 Write a k6 load-test script built from the measured scenarios.
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
@@ -135,6 +136,7 @@ const CONFIG_KEYS = new Set([
   'spa',
   'spaMax',
   'browsers',
+  'exportK6',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -170,6 +172,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [failOn]
  * @property {boolean} [json]
  * @property {boolean} [dryRun]
+ * @property {boolean} [exportK6]
  * @property {string} [baseline]
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
@@ -253,6 +256,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     failOn: parseChoice(cli.failOn ?? section.failOn, '--fail-on', FAIL_ON, PERF_DEFAULTS.failOn),
     json: cli.json ?? false,
     dryRun: cli.dryRun ?? false,
+    exportK6: parseBoolean(cli.exportK6 ?? section.exportK6, 'exportK6', false),
     budgets: resolveBudgets(section.budgets),
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),

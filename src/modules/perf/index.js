@@ -99,6 +99,7 @@ export function registerPerf(program, services) {
     .optionsGroup('Output:')
     .option('--json', 'print the summary as JSON to stdout')
     .option('--dry-run', 'validate options and config without opening a browser')
+    .option('--export-k6', 'also write a k6 load-test script built from the measured routes')
     .option(
       '--baseline <run>',
       'compare with an earlier run: "latest" or a path to its summary.json',

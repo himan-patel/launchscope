@@ -311,6 +311,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 │   └── page.har        HAR of the first cold run, redacted, without bodies
 └── stress/             only with --stress
     ├── stress.json     stages, per-hop stats, per-second timeline, insights
+    ├── k6-script.js    with --export-k6
     ├── stages.csv · hops.csv
     └── latency.svg · throughput.svg · errors.svg
 ```
@@ -471,6 +472,23 @@ Matching same-origin **POST, PUT, and PATCH** requests are replayed with the exa
 any report file. Non-matching writes are never replayed, DELETE is never replayed, and the
 console lists every replayed request type with a warning, because replayed writes can create
 data. Use this against local or staging environments.
+
+### Scaling up with k6
+
+LaunchScope's load generator runs in one Node.js process. For larger tests, export the same
+scenarios as a [k6](https://k6.io) script:
+
+```sh
+launchscope perf http://localhost:3000 --export-k6            # with or without --stress
+k6 run launchscope-reports/<run>/perf/stress/k6-script.js
+k6 run -e BASE_URL=https://staging.example.com -e LAUNCHSCOPE_HEADER_AUTHORIZATION='Bearer …' k6-script.js
+```
+
+The script replays each route's GET requests in the same dependency levels (parallel requests
+use `http.batch`), mirrors the stress model (`ramping-vus` for closed, `ramping-arrival-rate`
+for open) and stages, and turns `stressP95Ms` and `stressErrorRate` into k6 thresholds. Header
+values come from `LAUNCHSCOPE_HEADER_<NAME>` environment variables, and request bodies are never
+exported: allowlisted writes are listed in a comment to add by hand.
 
 ### Safety rules
 
@@ -643,7 +661,8 @@ is in [`examples/github-actions.yml`](../examples/github-actions.yml).
 - **Service workers are blocked** during measurement so every request is visible.
 - **Stress latency is client-side** and measured by Node.js; at very high request rates the load
   generator itself can become the limit. For large-scale load tests use a dedicated tool; use
-  LaunchScope to find the first bottleneck and which hop causes it.
+  LaunchScope to find the first bottleneck and which hop causes it, and `--export-k6` to scale
+  the same scenarios up.
 
 ## Privacy and safety
 

@@ -1,4 +1,4 @@
-import { mkdir } from 'node:fs/promises';
+import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BRAND } from '../../core/brand.js';
 import { formatDuration } from '../../core/duration.js';
@@ -14,10 +14,12 @@ import { writeFindings, writeRunHeader } from './console-output.js';
 import { runCrossBrowserPhase } from './cross-browser-phase.js';
 import { measureRoutes } from './measure-routes.js';
 import { runNavigationPhase } from './navigation-phase.js';
+import { buildK6Script } from './report/k6.js';
 import { writeReport } from './report/write-report.js';
 import { toReportableSettings } from './settings.js';
 import { runStressPhase } from './stress-phase.js';
 import { assertStressAllowed } from './stress/safety.js';
+import { apiScenario, buildScenarios } from './stress/scenario.js';
 
 /**
  * Runs the performance module end to end:
@@ -160,6 +162,22 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
           signal,
         })
       : null;
+  if (settings.exportK6) {
+    const scenarios = buildScenarios(routes, {
+      targetOrigin: settings.targetUrl.origin,
+      includeAssets: settings.stress.includeAssets,
+    });
+    if (api && api.operations.length > 0) scenarios.push(apiScenario(api.operations));
+    if (scenarios.length > 0) {
+      await mkdir(join(perfDirectory, 'stress'), { recursive: true });
+      const k6Path = join(perfDirectory, 'stress', 'k6-script.js');
+      await writeFile(k6Path, buildK6Script({ scenarios, settings }));
+      logger.info(`k6 script: ${k6Path}`);
+    } else {
+      logger.warn('No route loaded successfully on the target origin; no k6 script was written.');
+    }
+  }
+
   const comparison = baseline
     ? compareRuns({
         current: { routes: analysis.routes, endpoints: analysis.endpoints },
