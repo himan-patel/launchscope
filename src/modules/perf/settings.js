@@ -2,6 +2,7 @@ import { resolve } from 'node:path';
 import { parseDuration } from '../../core/duration.js';
 import { UsageError } from '../../core/errors.js';
 import { parseTarget } from '../../core/target.js';
+import { resolveBudgets } from './analyze/budgets.js';
 
 /**
  * @typedef {'none' | 'warning' | 'critical'} FailOnLevel
@@ -43,6 +44,7 @@ import { parseTarget } from '../../core/target.js';
  * @property {FailOnLevel} failOn
  * @property {boolean} json
  * @property {boolean} dryRun Resolve settings and create the run directory without a browser.
+ * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {StressSettings} stress
  */
 
@@ -213,6 +215,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     failOn: parseChoice(cli.failOn ?? section.failOn, '--fail-on', FAIL_ON, PERF_DEFAULTS.failOn),
     json: cli.json ?? false,
     dryRun: cli.dryRun ?? false,
+    budgets: resolveBudgets(section.budgets),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),

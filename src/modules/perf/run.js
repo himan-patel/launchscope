@@ -1,7 +1,11 @@
 import { mkdir, writeFile } from 'node:fs/promises';
 import { join } from 'node:path';
+import { BRAND } from '../../core/brand.js';
 import { formatBytes, formatDuration } from '../../core/duration.js';
+import { ExitCode, LaunchScopeError } from '../../core/errors.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
+import { SEVERITY_ORDER } from './analyze/bottlenecks.js';
+import { analyzeRun, countBySeverity } from './analyze/index.js';
 import { summarize } from './analyze/stats.js';
 import { launchBrowser } from './capture/browser.js';
 import { readSitemap, RouteQueue } from './discover/routes.js';
@@ -57,6 +61,7 @@ export async function runPerf(settings, runtime) {
     return;
   }
 
+  const startedAt = new Date();
   const queue = await seedRouteQueue(settings, logger);
   const allocateSlug = createSlugAllocator();
   /** @type {RouteResult[]} */
@@ -103,14 +108,100 @@ export async function runPerf(settings, runtime) {
     skipped: queue.skipped,
   });
 
+  const analysis = analyzeRun(
+    results.map((result) => ({
+      url: result.url,
+      slug: result.slug,
+      depth: result.depth,
+      source: result.source,
+      loads: result.measurement.loads,
+      trace: result.trace,
+      representativeRun: result.representativeRun,
+    })),
+    settings.budgets,
+  );
+  const summary = {
+    schemaVersion: 1,
+    tool: { name: BRAND.command, version: BRAND.version },
+    target: settings.targetUrl.href,
+    startedAt: startedAt.toISOString(),
+    finishedAt: new Date().toISOString(),
+    settings: toReportableSettings(settings),
+    totals: analysis.totals,
+    routes: analysis.routes,
+    endpoints: analysis.endpoints,
+    bottlenecks: analysis.bottlenecks,
+    skippedUrls: queue.skipped,
+  };
+  await writeJsonFile(join(perfDirectory, 'summary.json'), summary);
+  await writeJsonFile(join(perfDirectory, 'endpoints.json'), analysis.endpoints);
+  await writeJsonFile(join(perfDirectory, 'bottlenecks.json'), analysis.bottlenecks);
+
   logger.info('');
   const skipped = Object.entries(queue.skipped)
     .map(([reason, count]) => `${count} ${reason}`)
     .join(', ');
   logger.info(
-    `Measured ${results.length} route(s)${skipped ? logger.paint.dim(` · skipped: ${skipped}`) : ''}`,
+    `Measured ${results.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
+      (skipped ? logger.paint.dim(` · skipped: ${skipped}`) : ''),
   );
+  writeFindings(analysis.bottlenecks, logger);
   logger.success(`Report directory: ${perfDirectory}`);
+
+  if (settings.json) io.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  enforceFailOn(analysis.bottlenecks, settings.failOn);
+}
+
+const MAX_FINDINGS_IN_CONSOLE = 10;
+
+/**
+ * @param {import('./analyze/bottlenecks.js').Finding[]} findings
+ * @param {import('../../core/logger.js').Logger} logger
+ */
+function writeFindings(findings, logger) {
+  const { paint } = logger;
+  const counts = countBySeverity(findings);
+  logger.info('');
+  if (findings.length === 0) {
+    logger.success('No bottlenecks found within the configured budgets.');
+    return;
+  }
+  logger.info(
+    paint.bold('Bottlenecks') +
+      paint.dim(` · ${counts.critical} critical, ${counts.warning} warning, ${counts.info} info`),
+  );
+  const icons = {
+    critical: paint.red('●'),
+    warning: paint.yellow('●'),
+    info: paint.dim('○'),
+  };
+  for (const finding of findings.slice(0, MAX_FINDINGS_IN_CONSOLE)) {
+    logger.info(`  ${icons[finding.severity]} ${finding.title}`);
+    logger.info(paint.dim(`      ${finding.recommendation}`));
+  }
+  if (findings.length > MAX_FINDINGS_IN_CONSOLE) {
+    logger.info(paint.dim(`  … ${findings.length - MAX_FINDINGS_IN_CONSOLE} more in the report`));
+  }
+  logger.info('');
+}
+
+/**
+ * Exits with code 1 (after all reports are written) when findings reach `--fail-on`.
+ *
+ * @param {import('./analyze/bottlenecks.js').Finding[]} findings
+ * @param {import('./settings.js').FailOnLevel} failOn
+ */
+export function enforceFailOn(findings, failOn) {
+  if (failOn === 'none') return;
+  const failing = findings.filter(
+    (finding) => SEVERITY_ORDER[finding.severity] <= SEVERITY_ORDER[failOn],
+  );
+  if (failing.length > 0) {
+    throw new LaunchScopeError(
+      `${failing.length} bottleneck(s) at or above "${failOn}" (--fail-on ${failOn}).`,
+      { exitCode: ExitCode.CHECK_FAILED },
+    );
+  }
 }
 
 /**
