@@ -1,0 +1,26 @@
+# Dependencies
+node_modules/
+
+# LaunchScope output
+launchscope-reports/
+
+# Test coverage
+coverage/
+
+# Logs
+*.log
+npm-debug.log*
+
+# Environment and secrets (never commit credentials or session state)
+.env
+.env.*
+!.env.example
+.auth/
+*.storage-state.json
+
+# OS / editor
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
