@@ -67,19 +67,20 @@ export class RunAccumulator {
   }
 
   /**
-   * Folds in API operations measured directly (from an OpenAPI document).
+   * Folds in API operations measured directly (from an OpenAPI document or the repository).
    *
    * @param {Array<{ requests: import('../capture/network-recorder.js').RequestRecord[] }>} loads
    * @param {string} origin
+   * @param {'openapi' | 'repo'} [source]
    */
-  addApiLoads(loads, origin) {
+  addApiLoads(loads, origin, source = 'openapi') {
     for (const load of loads) {
       this.#requests += load.requests.length;
       this.#endpoints.add({
-        routeSlug: '(openapi)',
+        routeSlug: `(${source})`,
         pageOrigin: origin,
         requests: load.requests,
-        source: 'openapi',
+        source,
       });
     }
   }

@@ -35,6 +35,12 @@ All notable changes to this project are documented here. The format follows
   Endpoints are labeled by how they were found, API-only endpoints are replayed by `--stress`,
   and `openapi.json` lists measured and skipped operations.
 
+- Repository route discovery: `--repo <dir>` reads page routes from Next.js (App and Pages
+  Router), SvelteKit, Nuxt, Astro, and Remix file conventions plus Angular and React Router
+  route code, and GET API routes from Next.js route handlers, SvelteKit `+server` files, and
+  Express. Dynamic segments come from `perf.routeParams`; routes needing unknown values are
+  skipped and listed in `repo.json`.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

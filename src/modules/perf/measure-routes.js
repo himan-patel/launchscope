@@ -19,7 +19,7 @@ const SITEMAP_TIMEOUT_MS = 10_000;
  * @property {string} url
  * @property {string} slug Folder name under perf/routes/.
  * @property {number} depth
- * @property {'seed' | 'sitemap' | 'link'} source
+ * @property {'seed' | 'sitemap' | 'link' | 'repo'} source
  * @property {import('./trace/hop-tree.js').Trace | null} trace From the representative load.
  * @property {import('./capture/page-capture.js').PageLoad | null} representativeLoad
  * @property {boolean} hasScreenshot
@@ -35,10 +35,18 @@ const SITEMAP_TIMEOUT_MS = 10_000;
  * @param {string} options.perfDirectory
  * @param {AbortSignal} options.signal
  * @param {import('./analyze/index.js').RunAccumulator} options.accumulator
+ * @param {string[]} [options.repoRoutes] Page paths found in the repository.
  * @returns {Promise<{ routes: RouteRecord[], skipped: Record<string, number> }>}
  */
-export async function measureRoutes({ settings, logger, perfDirectory, signal, accumulator }) {
-  const queue = await seedRouteQueue(settings, logger);
+export async function measureRoutes({
+  settings,
+  logger,
+  perfDirectory,
+  signal,
+  accumulator,
+  repoRoutes = [],
+}) {
+  const queue = await seedRouteQueue(settings, logger, repoRoutes);
   const allocateSlug = createSlugAllocator();
   /** @type {RouteRecord[]} */
   const routes = [];
@@ -135,13 +143,15 @@ export async function measureRoutes({ settings, logger, perfDirectory, signal, a
 }
 
 /**
- * Seeds the queue with explicit routes (or the target) and, when enabled, the sitemap.
+ * Seeds the queue with explicit routes (or the target), repository routes, and, when enabled,
+ * the sitemap.
  *
  * @param {import('./settings.js').PerfSettings} settings
  * @param {import('../../core/logger.js').Logger} logger
+ * @param {string[]} repoRoutes
  * @returns {Promise<RouteQueue>}
  */
-async function seedRouteQueue(settings, logger) {
+async function seedRouteQueue(settings, logger, repoRoutes) {
   const queue = new RouteQueue({
     targetUrl: settings.targetUrl,
     exclude: settings.exclude,
@@ -149,6 +159,9 @@ async function seedRouteQueue(settings, logger) {
   });
   const seeds = settings.routes.length > 0 ? settings.routes : [settings.targetUrl.href];
   for (const seed of seeds) queue.add(seed, 0, 'seed');
+  // Repository routes are measured but, like sitemap routes, not crawled further.
+  for (const path of repoRoutes)
+    queue.add(new URL(path, settings.targetUrl).href, settings.depth, 'repo');
 
   if (settings.sitemap) {
     const sitemap = await readSitemap({

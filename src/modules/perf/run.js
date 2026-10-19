@@ -9,6 +9,7 @@ import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
 import { compareRuns, loadBaseline, regressionFindings } from './analyze/compare.js';
 import { countBySeverity, RunAccumulator } from './analyze/index.js';
 import { runApiPhase } from './api-phase.js';
+import { discoverRepoRoutes } from './discover/repo.js';
 import { writeFindings, writeRunHeader } from './console-output.js';
 import { measureRoutes } from './measure-routes.js';
 import { writeReport } from './report/write-report.js';
@@ -103,14 +104,33 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
   const { logger, io } = runtime;
   const startedAt = new Date();
   const accumulator = new RunAccumulator();
+  const repo = settings.repo
+    ? await discoverRepoRoutes({ root: settings.repo, routeParams: settings.routeParams })
+    : null;
+  if (repo) {
+    await writeJsonFile(join(perfDirectory, 'repo.json'), repo);
+    logger.info(
+      `Repo     ${repo.pages.length} page route(s), ${repo.apis.length} GET API route(s)` +
+        (repo.frameworks.length ? ` (${repo.frameworks.join(', ')})` : ' (no known router found)') +
+        logger.paint.dim(repo.skipped.length ? ` · ${repo.skipped.length} need routeParams` : ''),
+    );
+  }
   const { routes, skipped } = await measureRoutes({
     settings,
     logger,
     perfDirectory,
     signal,
     accumulator,
+    repoRoutes: repo?.pages ?? [],
   });
-  const api = await runApiPhase({ settings, logger, perfDirectory, signal, accumulator });
+  const api = await runApiPhase({
+    settings,
+    logger,
+    perfDirectory,
+    signal,
+    accumulator,
+    repoApis: repo?.apis ?? [],
+  });
   const analysis = accumulator.finish(settings.budgets);
 
   const stress =
@@ -118,7 +138,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
       ? await runStressPhase({
           settings,
           routes,
-          apiOperations: api?.plan.operations ?? [],
+          apiOperations: api?.operations ?? [],
           perfDirectory,
           logger,
           signal,
@@ -152,12 +172,20 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     bottlenecks: analysis.bottlenecks,
     stress: stress ? { ...stress.result, insights: stress.insights } : null,
     comparison,
-    openapi: api
+    openapi: api?.plan
       ? {
           source: api.plan.source,
           title: api.plan.title,
           measured: api.plan.operations.length,
           skipped: api.plan.skipped,
+        }
+      : null,
+    repo: repo
+      ? {
+          frameworks: repo.frameworks,
+          pages: repo.pages.length,
+          apis: repo.apis.length,
+          skipped: repo.skipped,
         }
       : null,
     skippedUrls: skipped,

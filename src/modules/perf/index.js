@@ -31,6 +31,10 @@ export function registerPerf(program, services) {
       '--openapi <spec>',
       'also measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file',
     )
+    .option(
+      '--repo <dir>',
+      'also read page and API routes from the app source (Next.js, SvelteKit, Nuxt, …)',
+    )
     .option('--depth <n>', `link-crawl depth from the target (default: ${PERF_DEFAULTS.depth})`)
     .option('--no-sitemap', 'do not read /sitemap.xml')
     .option('--exclude <regex>', 'skip URLs matching this pattern (repeatable)', collect)

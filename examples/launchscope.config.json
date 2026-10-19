@@ -4,6 +4,8 @@
     "routes": ["/", "/pricing", "/app/dashboard"],
     "maxRoutes": 25,
     "openapi": "auto",
+    "repo": ".",
+    "routeParams": { "slug": "hello-world", "id": "42" },
     "depth": 1,
     "sitemap": true,
     "exclude": ["/blog/", "\\.pdf$"],
