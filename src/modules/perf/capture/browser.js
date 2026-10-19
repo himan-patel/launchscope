@@ -42,6 +42,10 @@ export async function launchBrowser(settings) {
     const browser = await playwright.chromium.launch({
       headless: !settings.headed,
       channel: settings.browserChannel,
+      // LaunchScope handles signals itself so an interrupted run can still write its report.
+      handleSIGINT: false,
+      handleSIGTERM: false,
+      handleSIGHUP: false,
     });
     return { browser, devices: playwright.devices };
   } catch (error) {

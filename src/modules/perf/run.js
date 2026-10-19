@@ -3,6 +3,7 @@ import { join } from 'node:path';
 import { BRAND } from '../../core/brand.js';
 import { formatBytes, formatDuration } from '../../core/duration.js';
 import { ExitCode, LaunchScopeError } from '../../core/errors.js';
+import { createInterruptController, INTERRUPTED_EXIT_CODE } from '../../core/interrupt.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
 import { analyzeRun, countBySeverity } from './analyze/index.js';
@@ -81,25 +82,58 @@ export async function runPerf(settings, runtime) {
     return;
   }
 
+  const interrupt = createInterruptController({
+    onFirst: () =>
+      logger.warn(
+        'Stopping… finishing up and writing a partial report (press Ctrl+C again to quit now).',
+      ),
+  });
+  try {
+    await measureAndReport({ settings, runtime, perfDirectory, signal: interrupt.signal });
+  } finally {
+    interrupt.dispose();
+  }
+}
+
+/**
+ * @param {object} options
+ * @param {import('./settings.js').PerfSettings} options.settings
+ * @param {import('../../runtime.js').Runtime} options.runtime
+ * @param {string} options.perfDirectory
+ * @param {AbortSignal} options.signal Aborted by Ctrl+C / SIGTERM.
+ */
+async function measureAndReport({ settings, runtime, perfDirectory, signal }) {
+  const { logger, io } = runtime;
   const startedAt = new Date();
   const queue = await seedRouteQueue(settings, logger);
   const allocateSlug = createSlugAllocator();
   /** @type {RouteResult[]} */
   const results = [];
   const { browser, devices } = await launchBrowser(settings);
+  // Closing the browser makes an in-flight measurement fail fast, so a stop takes effect now.
+  const closeBrowser = () => {
+    browser.close().catch(() => {});
+  };
+  signal.addEventListener('abort', closeBrowser, { once: true });
 
   try {
     logger.info('');
-    for (let route = queue.next(); route; route = queue.next()) {
+    for (let route = queue.next(); route && !signal.aborted; route = queue.next()) {
       const slug = allocateSlug(route.url);
       await mkdir(join(perfDirectory, 'routes', slug), { recursive: true });
-      const measurement = await measureRoute({
-        browser,
-        devices,
-        settings,
-        url: route.url,
-        harPath: join(perfDirectory, 'routes', slug, 'page.har'),
-      });
+      let measurement;
+      try {
+        measurement = await measureRoute({
+          browser,
+          devices,
+          settings,
+          url: route.url,
+          harPath: join(perfDirectory, 'routes', slug, 'page.har'),
+        });
+      } catch (error) {
+        if (signal.aborted) break;
+        throw error;
+      }
       if (route.depth < settings.depth) {
         for (const link of measurement.links) queue.add(link, route.depth + 1, 'link');
       }
@@ -127,7 +161,11 @@ export async function runPerf(settings, runtime) {
       }
     }
   } finally {
-    await browser.close();
+    signal.removeEventListener('abort', closeBrowser);
+    await browser.close().catch(() => {});
+  }
+  if (signal.aborted) {
+    logger.warn(`Stopped early: ${results.length} route(s) were measured completely.`);
   }
 
   await writeJsonFile(join(perfDirectory, 'routes.json'), {
@@ -148,9 +186,10 @@ export async function runPerf(settings, runtime) {
     settings.budgets,
   );
 
-  const stress = settings.stress.enabled
-    ? await runStressPhase({ settings, results, perfDirectory, logger })
-    : null;
+  const stress =
+    settings.stress.enabled && !signal.aborted
+      ? await runStressPhase({ settings, results, perfDirectory, logger, signal })
+      : null;
   if (stress) {
     analysis.bottlenecks = sortFindings([...analysis.bottlenecks, ...stress.findings]);
     analysis.totals.findings = countBySeverity(analysis.bottlenecks);
@@ -162,6 +201,7 @@ export async function runPerf(settings, runtime) {
     target: settings.targetUrl.href,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
+    interrupted: signal.aborted,
     settings: toReportableSettings(settings),
     totals: analysis.totals,
     routes: analysis.routes,
@@ -207,6 +247,11 @@ export async function runPerf(settings, runtime) {
   logger.info(logger.paint.dim(`  All files: ${perfDirectory}`));
 
   if (settings.json) io.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
+  if (signal.aborted) {
+    throw new LaunchScopeError('Interrupted. The partial report above covers what was measured.', {
+      exitCode: INTERRUPTED_EXIT_CODE,
+    });
+  }
   enforceFailOn(analysis.bottlenecks, settings.failOn);
 }
 
@@ -219,9 +264,10 @@ export async function runPerf(settings, runtime) {
  * @param {RouteResult[]} options.results
  * @param {string} options.perfDirectory
  * @param {import('../../core/logger.js').Logger} options.logger
+ * @param {AbortSignal} options.signal
  * @returns {Promise<{ result: import('./stress/runner.js').StressResult, insights: import('./stress/analyze.js').StressInsights, findings: import('./analyze/bottlenecks.js').Finding[] } | null>}
  */
-async function runStressPhase({ settings, results, perfDirectory, logger }) {
+async function runStressPhase({ settings, results, perfDirectory, logger, signal }) {
   const { paint } = logger;
   const scenarios = buildScenarios(results, {
     targetOrigin: settings.targetUrl.origin,
@@ -233,12 +279,6 @@ async function runStressPhase({ settings, results, perfDirectory, logger }) {
   }
 
   const cookieFor = await loadCookieJar(settings.storageStatePath);
-  const controller = new AbortController();
-  const onInterrupt = () => {
-    logger.warn('Stopping the stress test after the current requests…');
-    controller.abort();
-  };
-  process.once('SIGINT', onInterrupt);
 
   logger.info('');
   logger.info(
@@ -247,28 +287,23 @@ async function runStressPhase({ settings, results, perfDirectory, logger }) {
         ` · ${scenarios.length} route scenario(s), GET requests to ${settings.targetUrl.origin} only`,
       ),
   );
-  let result;
-  try {
-    result = await runStress({
-      scenarios,
-      settings: settings.stress,
-      headers: settings.headers,
-      cookieFor,
-      signal: controller.signal,
-      onStage: (stage) => {
-        const icon = stage.errorRate > 0 ? paint.yellow('!') : paint.green('✔');
-        logger.info(
-          `  ${icon} ${String(stage.concurrency).padStart(4)} users  ` +
-            paint.dim(
-              `${stage.requestsPerSecond.toFixed(1)} req/s · p50 ${formatDuration(stage.latencyMs?.p50 ?? Number.NaN)} · ` +
-                `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%`,
-            ),
-        );
-      },
-    });
-  } finally {
-    process.removeListener('SIGINT', onInterrupt);
-  }
+  const result = await runStress({
+    scenarios,
+    settings: settings.stress,
+    headers: settings.headers,
+    cookieFor,
+    signal,
+    onStage: (stage) => {
+      const icon = stage.errorRate > 0 ? paint.yellow('!') : paint.green('✔');
+      logger.info(
+        `  ${icon} ${String(stage.concurrency).padStart(4)} users  ` +
+          paint.dim(
+            `${stage.requestsPerSecond.toFixed(1)} req/s · p50 ${formatDuration(stage.latencyMs?.p50 ?? Number.NaN)} · ` +
+              `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%`,
+          ),
+      );
+    },
+  });
   if (result.stoppedReason) logger.warn(result.stoppedReason);
 
   const { insights, findings } = analyzeStress(result, settings.budgets);

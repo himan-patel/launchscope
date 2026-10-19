@@ -157,12 +157,13 @@ See the [configuration reference](docs/perf.md#configuration-file) and
 
 ### Exit codes
 
-| Code | Meaning                                                       |
-| ---- | ------------------------------------------------------------- |
-| `0`  | Success                                                       |
-| `1`  | Checks ran and at least one crossed a failure threshold       |
-| `2`  | Invalid command, option, target, or configuration             |
-| `70` | Unexpected internal error (please [open an issue][new-issue]) |
+| Code  | Meaning                                                             |
+| ----- | ------------------------------------------------------------------- |
+| `0`   | Success                                                             |
+| `1`   | Checks ran and at least one crossed a failure threshold             |
+| `2`   | Invalid command, option, target, or configuration                   |
+| `70`  | Unexpected internal error (please [open an issue][new-issue])       |
+| `130` | Interrupted (Ctrl+C or SIGTERM); a partial report was still written |
 
 ## Contributing
 
