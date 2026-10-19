@@ -27,6 +27,10 @@ export function registerPerf(program, services) {
     .optionsGroup('Routes:')
     .option('-r, --routes <paths>', 'comma-separated routes to measure, e.g. /,/pricing,/app')
     .option('--max-routes <n>', `maximum routes to measure (default: ${PERF_DEFAULTS.maxRoutes})`)
+    .option(
+      '--openapi <spec>',
+      'also measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file',
+    )
     .option('--depth <n>', `link-crawl depth from the target (default: ${PERF_DEFAULTS.depth})`)
     .option('--no-sitemap', 'do not read /sitemap.xml')
     .option('--exclude <regex>', 'skip URLs matching this pattern (repeatable)', collect)

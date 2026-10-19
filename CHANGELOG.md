@@ -29,6 +29,12 @@ All notable changes to this project are documented here. The format follows
   sampled `traceparent` header (fresh span per request) to the target origin only; `--trace-url`
   (or `perf.traceContext.urlTemplate`) links each load's trace from the report.
 
+- OpenAPI discovery: `--openapi auto|<url>|<file>` reads an OpenAPI 3.x / Swagger 2.0 JSON spec
+  and measures its GET operations on the target origin directly (examples, defaults, enums, and
+  `$ref` parameters supported; operations needing unknown input are skipped with reasons).
+  Endpoints are labeled by how they were found, API-only endpoints are replayed by `--stress`,
+  and `openapi.json` lists measured and skipped operations.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

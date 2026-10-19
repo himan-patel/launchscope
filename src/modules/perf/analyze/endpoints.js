@@ -56,6 +56,7 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {string | null} graphqlOperation GraphQL operation name; endpoints are split by it.
  * @property {import('../capture/graphql.js').OperationType | null} graphqlType
  * @property {boolean} streaming A server-sent event stream; excluded from timing statistics.
+ * @property {Array<'page' | 'openapi'>} discoveredBy Called by measured pages, measured from the OpenAPI spec, or both.
  */
 
 /**
@@ -63,6 +64,7 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {string} routeSlug
  * @property {string} pageOrigin
  * @property {RequestRecord[]} requests
+ * @property {'page' | 'openapi'} [source] How the requests were made (default: page loads).
  */
 
 /**
@@ -91,7 +93,7 @@ export function templatePath(pathname) {
  * routes never has to keep every request of every load in memory at once.
  */
 export class EndpointAccumulator {
-  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes'>, routes: Set<string>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
+  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes' | 'discoveredBy'>, routes: Set<string>, sources: Set<'page' | 'openapi'>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
   #groups = new Map();
 
   /**
@@ -138,6 +140,7 @@ export class EndpointAccumulator {
             streaming: false,
           },
           routes: new Set(),
+          sources: new Set(),
           durations: [],
           waits: [],
           downloads: [],
@@ -150,7 +153,9 @@ export class EndpointAccumulator {
 
       const { meta } = group;
       meta.calls += 1;
-      group.routes.add(load.routeSlug);
+      const source = load.source ?? 'page';
+      group.sources.add(source);
+      if (source === 'page') group.routes.add(load.routeSlug);
       perLoad.set(key, (perLoad.get(key) ?? 0) + 1);
       // Same method + URL (+ same GraphQL body) is an identical call; differing variables are not.
       const identicalKey = `${request.method} ${request.url} ${operation?.bodyHash ?? ''}`;
@@ -210,6 +215,7 @@ export class EndpointAccumulator {
       .map((group) => ({
         ...group.meta,
         routes: [...group.routes],
+        discoveredBy: [...group.sources].sort(),
         durationMs: summarize(group.durations),
         waitMs: summarize(group.waits),
         downloadMs: summarize(group.downloads),
