@@ -176,6 +176,10 @@ function get(url, handlerStyle, done) {
   xhr.send();
 }
 get('/api/me', 'onloadend', (me) => {
+  // Keeps this response task busy past the 50 ms timer below, so the timer task is already due
+  // when it ends: whichever task the browser runs next, the timer must not inherit this cause.
+  const until = performance.now() + 120;
+  while (performance.now() < until) {}
   get('/api/projects?owner=' + me.id, 'listener', () => {
     get('/api/items/42', 'readystatechange', () => {
       new Promise((resolve) => resolve()).then(() => fetch('/api/slow'));
