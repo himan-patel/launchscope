@@ -3,6 +3,7 @@ import { after, before, describe, it } from 'node:test';
 import { createMeasurementContext, launchBrowser } from '../src/modules/perf/capture/browser.js';
 import { capturePageLoad } from '../src/modules/perf/capture/page-capture.js';
 import { resolvePerfSettings } from '../src/modules/perf/settings.js';
+import { buildTrace } from '../src/modules/perf/trace/hop-tree.js';
 import { startFixtureServer } from './fixtures/app-server.js';
 
 /** @typedef {import('../src/modules/perf/capture/page-capture.js').PageLoad} PageLoad */
@@ -115,6 +116,46 @@ describe('capturePageLoad (real Chromium against the fixture app)', () => {
     const [slow] = findRequest(load, '/api/slow');
     assert.ok((slow.phases?.waitMs ?? 0) >= 200, `slow wait ${slow.phases?.waitMs}`);
     assert.equal(slow.headers['server-timing'], 'db;dur=230;desc="query", app;dur=15');
+  });
+
+  it('traces the dashboard hop tree, API chain, and critical path from a real load', async () => {
+    const { load } = await capture('/dashboard');
+    const trace = buildTrace(load.requests, load.finalUrl ?? `${server.origin}/dashboard`);
+    const pathOf = (/** @type {string} */ id) => {
+      const url = new URL(
+        /** @type {{ url: string }} */ (trace.nodes.find((n) => n.id === id)).url,
+      );
+      return `${url.pathname}${url.search}`;
+    };
+    const byPath = (/** @type {string} */ path) =>
+      trace.nodes.filter((node) => pathOf(node.id) === path);
+
+    const [script] = byPath('/static/dashboard.js');
+    assert.equal(script.parentId, trace.rootId);
+    for (const api of ['/api/me', '/api/projects?owner=7', '/api/slow', '/api/items/42']) {
+      for (const node of byPath(api)) assert.equal(node.parentId, script.id, api);
+    }
+
+    const [projects] = byPath('/api/projects?owner=7');
+    assert.ok(projects.dependsOnId, 'projects waited for /api/me');
+    assert.equal(pathOf(projects.dependsOnId), '/api/me');
+    const [slow] = byPath('/api/slow');
+    assert.equal(slow.dependsOnId, projects.id);
+    assert.deepEqual(slow.serverTiming[0], { name: 'db', durationMs: 230, description: 'query' });
+
+    assert.deepEqual(trace.chains[0].ids.map(pathOf), [
+      '/api/me',
+      '/api/projects?owner=7',
+      '/api/slow',
+    ]);
+    const criticalPaths = trace.criticalPath?.segments.map((segment) => pathOf(segment.id));
+    assert.deepEqual(criticalPaths, [
+      '/dashboard',
+      '/static/dashboard.js',
+      '/api/me',
+      '/api/projects?owner=7',
+      '/api/slow',
+    ]);
   });
 
   it('records redirect hops on the final request', async () => {
