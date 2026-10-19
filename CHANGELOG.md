@@ -6,6 +6,8 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.4.0] - 2026-10-19
+
 ### Added
 
 - `launchscope doctor`: verifies the environment by launching Chromium, Firefox, and WebKit,
@@ -208,6 +210,7 @@ First release with a working check module: performance.
 
 - `--storage-state` help text and the missing-session hint now point to `launchscope login`.
 
-[Unreleased]: https://github.com/himan-patel/launchscope/compare/v0.3.0...HEAD
+[Unreleased]: https://github.com/himan-patel/launchscope/compare/v0.4.0...HEAD
+[0.4.0]: https://github.com/himan-patel/launchscope/compare/v0.3.0...v0.4.0
 [0.3.0]: https://github.com/himan-patel/launchscope/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/himan-patel/launchscope/releases/tag/v0.2.0

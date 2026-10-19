@@ -78,7 +78,7 @@ By default this:
 4. prints a summary and writes a report directory.
 
 ```text
-▲ launchscope v0.3.0
+▲ launchscope v0.4.0
   Launch-readiness checks for web apps
 
 Target   http://localhost:3000/ (loopback)
