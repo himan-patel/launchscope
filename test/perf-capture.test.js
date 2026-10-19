@@ -139,22 +139,22 @@ describe('capturePageLoad (real Chromium against the fixture app)', () => {
     const [projects] = byPath('/api/projects?owner=7');
     assert.ok(projects.dependsOnId, 'projects waited for /api/me');
     assert.equal(pathOf(projects.dependsOnId), '/api/me');
-    const [slow] = byPath('/api/slow');
-    // /api/slow starts after /api/projects; on a slow machine the concurrently fired second
-    // /api/me can finish first and be picked as the dependency. Either way the chain runs
-    // through /api/projects.
-    const upstream = [];
-    for (let id = slow.dependsOnId; id;) {
-      upstream.push(pathOf(id));
-      id = /** @type {{ dependsOnId: string | null }} */ (trace.nodes.find((n) => n.id === id))
-        .dependsOnId;
+    // The three parallel calls run in the continuation of the projects response, so all three
+    // were observed as caused by it, never by the concurrently fired second /api/me.
+    for (const api of ['/api/me', '/api/slow', '/api/items/42']) {
+      const later = byPath(api).filter((node) => node.dependsOnId === projects.id);
+      assert.equal(later.length, 1, `${api} caused by /api/projects`);
     }
-    assert.ok(upstream.includes('/api/projects?owner=7'), upstream.join(' <- '));
+    const [firstMe] = byPath('/api/me').filter((node) => node.dependsOnId === null);
+    assert.ok(firstMe, 'the first /api/me was not caused by another request');
+    const [slow] = byPath('/api/slow');
     assert.deepEqual(slow.serverTiming[0], { name: 'db', durationMs: 230, description: 'query' });
 
-    const longest = trace.chains[0].ids.map(pathOf);
-    assert.deepEqual(longest.slice(0, 2), ['/api/me', '/api/projects?owner=7']);
-    assert.equal(longest[longest.length - 1], '/api/slow');
+    assert.deepEqual(trace.chains[0].ids.map(pathOf), [
+      '/api/me',
+      '/api/projects?owner=7',
+      '/api/slow',
+    ]);
     const criticalPaths = trace.criticalPath?.segments.map((segment) => pathOf(segment.id)) ?? [];
     assert.deepEqual(criticalPaths.slice(0, 4), [
       '/dashboard',
@@ -163,6 +163,35 @@ describe('capturePageLoad (real Chromium against the fixture app)', () => {
       '/api/projects?owner=7',
     ]);
     assert.equal(criticalPaths[criticalPaths.length - 1], '/api/slow');
+  });
+
+  it('observes causes through XMLHttpRequest handlers and ignores timers and independent calls', async () => {
+    const { load } = await capture('/xhr');
+    const trace = buildTrace(load.requests, load.finalUrl ?? `${server.origin}/xhr`);
+    /** @param {string} path */
+    const node = (path) => {
+      const found = trace.nodes.find((n) => {
+        const url = new URL(n.url);
+        return `${url.pathname}${url.search}` === path;
+      });
+      assert.ok(found, `expected ${path}`);
+      return found;
+    };
+    const me = node('/api/me');
+    const projects = node('/api/projects?owner=7');
+    const items = node('/api/items/42');
+    const slow = node('/api/slow');
+    assert.equal(me.dependsOnId, null);
+    assert.equal(projects.dependsOnId, me.id, 'onloadend handler');
+    assert.equal(items.dependsOnId, projects.id, 'addEventListener("load") handler');
+    assert.equal(slow.dependsOnId, items.id, 'promise continuation of a readystatechange handler');
+    assert.equal(node('/api/flags-independent').dependsOnId, null);
+    assert.equal(node('/api/later').dependsOnId, null, 'a timer is not a dependency');
+    assert.deepEqual(
+      trace.chains[0].ids,
+      [me.id, projects.id, items.id, slow.id],
+      'longest observed chain',
+    );
   });
 
   it('records redirect hops on the final request', async () => {

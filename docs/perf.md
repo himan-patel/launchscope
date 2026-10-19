@@ -385,9 +385,14 @@ p99, standard deviation). Tables show the median unless they say otherwise.
 
 - **Hop tree**: every request hangs under what caused it. A stylesheet or script under the
   document that referenced it; an API call under the script on whose call stack it started.
-- **Sequential API chain**: API calls where each started within 100 ms after the previous one
-  (from the same script) finished, as in `await fetch(a); await fetch(b)`. Chains are inferred
-  from timing and call stacks and labeled as such.
+- **Sequential API chain**: API calls where each was issued by the previous call's response
+  handler, as in `await fetch(a); await fetch(b)`. A small script installed before the page's
+  own code records this as it happens: while a `fetch` response (or its `json()`, `text()`, …)
+  or an `XMLHttpRequest` completion handler (`onload`, `onloadend`, `onreadystatechange` at
+  `readyState` 4, or their listeners; this covers axios) is running, including the promise
+  continuations it triggers, any new fetch/XHR is recorded as caused by that request. Calls
+  started from timers, user input, or independently are never linked, even if they happen to
+  start right after another call finished.
 - **Critical path**: starting from the last meaningful request to finish (beacons excluded), the
   chain of "waited for" and "triggered by" links back to the document. Shortening any step on
   this path makes the page finish sooner; speeding up anything else does not.
@@ -716,8 +721,9 @@ is in [`examples/github-actions.yml`](../examples/github-actions.yml).
   findings carry over; absolute times usually do not (no real network, often a dev build).
   Measure a production build when you can.
 - **TBT is approximated** (long tasks after FCP until collection, not until Time to Interactive).
-- **API chains are inferred** from timing and call stacks; a call that merely happened to start
-  soon after another one from the same script can be reported as dependent.
+- **API chains cover fetch and XMLHttpRequest.** Requests made from a Web Worker, a service
+  worker, or WebSocket messages are measured but are not linked as dependencies. A dependency
+  that goes through a timer (`setTimeout` after a response) is deliberately not linked.
 - **Backend hops** (database, cache, upstream services) are visible in two ways: `Server-Timing`
   response headers (shown per endpoint) and, with `--trace-context`, your own tracing backend,
   where each page load is one trace.

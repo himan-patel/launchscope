@@ -17,6 +17,11 @@ All notable changes to this project are documented here. The format follows
 - Node.js is pinned to 22.23.3 (LTS) in `.nvmrc` and `.node-version` (for fnm and Volta), npm
   refuses unsupported versions (`engine-strict`), and the minimum is now 22.19 so Lighthouse
   works on every supported Node.js. CI uses the pinned version and runs `doctor`.
+- API chains are now observed, not inferred. A script installed before the page's own code
+  records which request's response handler (fetch, its body methods, or XMLHttpRequest/axios
+  completion handlers, including promise continuations) issued each new request. The previous
+  rule ("started within 100 ms after another call finished") is gone, so calls made from timers
+  or independently are no longer reported as dependent. Request records gain `causedBy`.
 
 ## [0.3.0] - 2026-10-19
 

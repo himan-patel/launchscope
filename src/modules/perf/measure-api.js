@@ -160,6 +160,7 @@ async function measureOnce(
     pending: false,
     jsonShape,
     graphql: null,
+    causedBy: null,
     frameId: null,
     isMainFrame: true,
     streaming: false,

@@ -37,6 +37,7 @@ function request(fields) {
     pending: false,
     jsonShape: null,
     graphql: null,
+    causedBy: null,
     frameId: null,
     isMainFrame: true,
     streaming: false,
@@ -99,6 +100,7 @@ const DASHBOARD = [
     startMs: 160,
     endMs: 400,
     headers: { 'server-timing': 'db;dur=200' },
+    causedBy: 'me',
   }),
   request({
     id: 'slow',
@@ -107,6 +109,7 @@ const DASHBOARD = [
     initiator: script([`${ORIGIN}/app.js`]),
     startMs: 410,
     endMs: 700,
+    causedBy: 'projects',
   }),
   request({
     id: 'items',
@@ -115,6 +118,7 @@ const DASHBOARD = [
     initiator: script([`${ORIGIN}/app.js`]),
     startMs: 411,
     endMs: 450,
+    causedBy: 'projects',
   }),
   request({
     id: 'beacon',
@@ -158,7 +162,7 @@ describe('buildTrace', () => {
     assert.equal(node('me').thirdParty, false);
   });
 
-  it('infers API calls that waited for a previous API call', () => {
+  it('links API calls only to the call whose response handler issued them (observed)', () => {
     assert.equal(node('me').dependsOnId, null);
     assert.equal(node('projects').dependsOnId, 'me');
     assert.equal(node('slow').dependsOnId, 'projects');
@@ -190,6 +194,26 @@ describe('buildTrace', () => {
     );
     assert.equal(path.totalMs, 700);
     assert.equal(path.segments[2].gapMs, 10, 'script ran 10 ms before calling /api/me');
+  });
+
+  it('creates no dependency from timing alone', () => {
+    const unobserved = buildTrace(
+      DASHBOARD.map((request) => ({ ...request, causedBy: null })),
+      `${ORIGIN}/dashboard`,
+    );
+    assert.deepEqual(unobserved.chains, []);
+    assert.ok(unobserved.nodes.every((node) => node.dependsOnId === null));
+  });
+
+  it('ignores a cause that is not part of this load', () => {
+    const orphan = buildTrace(
+      [
+        DASHBOARD[0],
+        request({ id: 'x', url: `${ORIGIN}/api/x`, resourceType: 'Fetch', causedBy: 'gone' }),
+      ],
+      `${ORIGIN}/dashboard`,
+    );
+    assert.equal(orphan.nodes[1].dependsOnId, null);
   });
 
   it('parses Server-Timing onto nodes', () => {

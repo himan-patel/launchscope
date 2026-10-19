@@ -91,6 +91,8 @@ const MAX_JSON_INSPECT_BYTES = 5 * 1024 * 1024;
  * @property {boolean} pending True when still in flight when capture ended.
  * @property {JsonShape | null} jsonShape
  * @property {import('./graphql.js').GraphqlOperation | null} graphql Operation, for GraphQL calls.
+ * @property {string | null} causedBy Record id of the API request whose response handler issued
+ *   this request, as observed in the page (fetch/XHR only).
  * @property {string | null} frameId
  * @property {boolean} isMainFrame False for requests made by iframes.
  * @property {boolean} streaming A long-lived stream (server-sent events), not a request/response.
@@ -390,6 +392,7 @@ export class NetworkRecorder {
       pending: false,
       jsonShape: null,
       graphql: null,
+      causedBy: null,
     });
     this.#identifyGraphql(event);
     this.#keepReplayBody(event);

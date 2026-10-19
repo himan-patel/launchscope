@@ -207,7 +207,7 @@ export function navigationFindings(navigations, budgets) {
         severity: chainSeverity,
         category: 'waterfall',
         title: `Navigating ${label} waits on ${chain.ids.length} sequential API calls (${formatDuration(chain.totalMs)})`,
-        detail: `${navigation.chainLabels.join(' → ')}. Inferred from timing and call stacks.`,
+        detail: `${navigation.chainLabels.join(' → ')}. Observed in the page: each call was issued by the previous call's response handler.`,
         recommendation:
           'Fetch independent data in parallel or return it from one endpoint for this route.',
         subject,

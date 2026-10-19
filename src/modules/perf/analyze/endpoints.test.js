@@ -41,6 +41,7 @@ function api(fields) {
     pending: false,
     jsonShape: null,
     graphql: null,
+    causedBy: null,
     frameId: null,
     isMainFrame: true,
     streaming: false,

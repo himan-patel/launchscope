@@ -162,6 +162,35 @@ const SEARCH_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8">
 })();
 </script></body></html>`;
 
+const XHR_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>XHR</title></head>
+<body><h1>XHR</h1><script src="/static/xhr.js"></script></body></html>`;
+
+// Mirrors how axios and older code use XMLHttpRequest, plus requests that must NOT be linked.
+const XHR_JS = `
+function get(url, handlerStyle, done) {
+  const xhr = new XMLHttpRequest();
+  xhr.open('GET', url);
+  if (handlerStyle === 'onloadend') xhr.onloadend = () => done(JSON.parse(xhr.responseText));
+  else if (handlerStyle === 'listener') xhr.addEventListener('load', () => done(JSON.parse(xhr.responseText)));
+  else xhr.onreadystatechange = () => { if (xhr.readyState === 4) done(JSON.parse(xhr.responseText)); };
+  xhr.send();
+}
+get('/api/me', 'onloadend', (me) => {
+  // Keeps this response task busy past the 50 ms timer below, so the timer task is already due
+  // when it ends: whichever task the browser runs next, the timer must not inherit this cause.
+  const until = performance.now() + 120;
+  while (performance.now() < until) {}
+  get('/api/projects?owner=' + me.id, 'listener', () => {
+    get('/api/items/42', 'readystatechange', () => {
+      new Promise((resolve) => resolve()).then(() => fetch('/api/slow'));
+    });
+  });
+});
+fetch('/api/flags-independent');
+// Fires while the chain is in flight: running concurrently is not a dependency.
+setTimeout(() => fetch('/api/later'), 50);
+`;
+
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
 const HERO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#4F46E5"/></svg>`;
@@ -280,6 +309,13 @@ export async function startFixtureServer() {
         await new Promise((resolve) => setTimeout(resolve, 60));
         return send(200, 'application/json', JSON.stringify(['a', 'b', 'c']));
       }
+      case '/xhr':
+        return html(XHR_HTML);
+      case '/static/xhr.js':
+        return send(200, 'text/javascript', XHR_JS, { 'cache-control': 'max-age=31536000' });
+      case '/api/flags-independent':
+      case '/api/later':
+        return send(200, 'application/json', JSON.stringify({ ok: true }));
       case '/spa':
       case '/spa/a':
       case '/spa/b':

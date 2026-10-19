@@ -104,6 +104,7 @@ function record(fields) {
     pending: false,
     jsonShape: null,
     graphql: null,
+    causedBy: null,
     frameId: null,
     isMainFrame: true,
     streaming: false,
@@ -132,7 +133,13 @@ describe('buildScenarios', () => {
         initiator: { type: 'parser', url: 'https://app.test/dash', stackUrls: [], requestId: null },
       }),
       record({ id: 'me', url: 'https://app.test/api/me', startMs: 40, endMs: 60 }),
-      record({ id: 'list', url: 'https://app.test/api/items/7', startMs: 65, endMs: 90 }),
+      record({
+        id: 'list',
+        url: 'https://app.test/api/items/7',
+        startMs: 65,
+        endMs: 90,
+        causedBy: 'me',
+      }),
       record({
         id: 'side',
         url: 'https://app.test/api/flags',

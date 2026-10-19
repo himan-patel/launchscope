@@ -352,7 +352,7 @@ function traceFindings(route, trace, budgets) {
       severity: chainSeverity,
       category: 'waterfall',
       title: `${label} waits on ${chain.ids.length} sequential API calls (${formatDuration(chain.totalMs)})`,
-      detail: `Each call starts only after the previous one finished: ${steps.join(' → ')}. Inferred from timing and call stacks; ${formatDuration(chain.idleMs)} is spent between calls.`,
+      detail: `Each call was issued by the previous call's response handler (observed in the page): ${steps.join(' → ')}. ${formatDuration(chain.idleMs)} is spent between calls.`,
       recommendation:
         'Fetch independent data in parallel (Promise.all), return what the page needs from one endpoint, or load it on the server.',
       subject,

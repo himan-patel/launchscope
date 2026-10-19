@@ -1,4 +1,5 @@
-import { startRecording } from './page-capture.js';
+import { applyObservedCauses } from './causality.js';
+import { readTrackedCalls, startRecording } from './page-capture.js';
 
 const NETWORK_IDLE_MS = 500;
 const DOM_QUIET_MS = 300;
@@ -65,6 +66,7 @@ export async function measureNavigation({ context, settings, from, to }) {
       timeoutMs: Math.min(MAX_SETTLE_MS, settings.timeoutMs),
     });
     const before = new Set((await recorder.finish(0)).map((request) => request.id));
+    const callsBefore = (await readTrackedCalls(page))?.length ?? 0;
 
     const clickedAt = await page.evaluate((target) => {
       const anchor = Array.from(document.querySelectorAll('a[href]')).find(
@@ -104,6 +106,8 @@ export async function measureNavigation({ context, settings, from, to }) {
           request.responseStartMs === null ? null : round(request.responseStartMs + shift),
       }))
       .filter((request) => request.startMs >= -5);
+    // Only calls made after the click; causes pointing at earlier requests stay unlinked.
+    applyObservedCauses(requests, ((await readTrackedCalls(page)) ?? []).slice(callsBefore));
 
     const isFull = requests.some(
       (request) => request.resourceType === 'Document' && request.isMainFrame,
