@@ -124,8 +124,8 @@ launchscope-reports/<host>_<timestamp>/perf/
   writes with `--stress-replay`.
 - **Reports you can share.** Response bodies are never stored; cookies, tokens, and auth headers
   are redacted; extra headers are only sent to the target origin.
-- **Evidence over opinions.** Every finding cites the measurements behind it, and inferred
-  results (like API chains) are labeled as inferred.
+- **Evidence over opinions.** Every finding cites the measurements behind it. API chains are
+  observed in the page (which response handler issued which request), not guessed from timing.
 
 ## Roadmap
 

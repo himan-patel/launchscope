@@ -4,20 +4,15 @@ import { parseServerTiming } from './server-timing.js';
  * Builds the hop tree of one page load: which request caused which, which API calls waited on
  * other API calls, and which chain of requests determined when the page finished loading.
  *
- * Two kinds of edges are derived from real measurements:
- * - **parent** ("triggered by"): from the CDP initiator. A parser-initiated request belongs to the
- *   document or stylesheet that referenced it; a script-initiated request belongs to the
- *   innermost script on its call stack that the page actually downloaded.
- * - **dependsOn** ("waited for"): an API call (fetch/XHR) that started within
- *   `CHAIN_GAP_MS` after another API call from the same script finished. This is how
- *   `await fetch(a); await fetch(b)` waterfalls show up; it is an inference from timing and
- *   call stacks, so it is labeled as such in reports.
+ * Both kinds of edges come from observations, not timing guesses:
+ * - **parent** ("triggered by"): the browser's own initiator record (CDP). A parser-initiated
+ *   request belongs to the document or stylesheet that referenced it; a script-initiated request
+ *   belongs to the innermost script on its call stack that the page downloaded.
+ * - **dependsOn** ("waited for"): observed in the page by the request tracker. An API call issued
+ *   from the code handling another API call's response (a `fetch` continuation, a body read, or
+ *   an XHR completion handler) depends on that call. Calls made without such a cause have none.
  */
 
-/** Maximum gap between one API call finishing and the next starting to count as a chain. */
-export const CHAIN_GAP_MS = 100;
-
-const API_TYPES = new Set(['Fetch', 'XHR']);
 const NON_BLOCKING_TYPES = new Set(['Ping', 'EventSource', 'WebSocket', 'CSPViolationReport']);
 const MAX_CHAINS = 5;
 
@@ -30,7 +25,7 @@ const MAX_CHAINS = 5;
  * @typedef {object} TraceNode
  * @property {string} id
  * @property {string | null} parentId Request that triggered this one.
- * @property {string | null} dependsOnId API call this one waited for (inferred).
+ * @property {string | null} dependsOnId API call whose response handler issued this one (observed).
  * @property {string[]} childIds
  * @property {number} depth Depth in the parent tree (document = 0).
  * @property {string} url
@@ -137,11 +132,12 @@ export function buildTrace(requests, pageUrl) {
     });
   }
 
+  const byId = new Map(sorted.map((request) => [request.id, request]));
   for (const request of sorted) {
     if (request === root) continue;
     const node = /** @type {TraceNode} */ (nodes.get(request.id));
     node.parentId = findParent(request, byUrl, root)?.id ?? root?.id ?? null;
-    node.dependsOnId = findDependency(request, sorted)?.id ?? null;
+    node.dependsOnId = request.causedBy && byId.has(request.causedBy) ? request.causedBy : null;
   }
 
   for (const node of nodes.values()) {
@@ -195,28 +191,6 @@ function latestStartedBefore(candidates, request) {
   for (const candidate of candidates) {
     if (candidate === request || candidate.startMs > request.startMs) continue;
     if (!best || candidate.startMs >= best.startMs) best = candidate;
-  }
-  return best;
-}
-
-/**
- * @param {RequestRecord} request
- * @param {RequestRecord[]} sorted
- * @returns {RequestRecord | null}
- */
-function findDependency(request, sorted) {
-  if (!API_TYPES.has(request.resourceType)) return null;
-  const scripts = new Set(request.initiator.stackUrls);
-  if (scripts.size === 0) return null;
-
-  let best = null;
-  for (const candidate of sorted) {
-    if (candidate === request || !API_TYPES.has(candidate.resourceType)) continue;
-    if (candidate.failure || candidate.pending) continue;
-    const gap = request.startMs - candidate.endMs;
-    if (gap < 0 || gap > CHAIN_GAP_MS) continue;
-    if (!candidate.initiator.stackUrls.some((url) => scripts.has(url))) continue;
-    if (!best || candidate.endMs > best.endMs) best = candidate;
   }
   return best;
 }

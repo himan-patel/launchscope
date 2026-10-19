@@ -60,7 +60,7 @@ src/modules/perf/
 │   ├── trace-context.js  W3C traceparent generation and per-page trace registry.
 │   └── vitals.js         In-page Web Vitals observer (LCP, CLS, TBT, FCP, TTFB, DOM changes).
 ├── trace/
-│   ├── hop-tree.js       Request tree, inferred API chains, critical path, text rendering.
+│   ├── hop-tree.js       Request tree, observed API chains, critical path, text rendering.
 │   └── server-timing.js  W3C Server-Timing parser.
 ├── analyze/
 │   ├── stats.js          Percentile distributions.

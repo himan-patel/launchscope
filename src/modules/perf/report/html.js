@@ -283,7 +283,7 @@ ${renderRealtime(route.realtime)}
 <h4>Critical path</h4>
 <p class="lede">The chain of requests that decided when the last request finished (${e(formatDuration(trace.criticalPath?.totalMs ?? 0))}).</p>
 <ol class="path">${critical}</ol>
-${chains ? `<h4>Sequential API chains <span class="muted">(inferred from timing and call stacks)</span></h4><ul class="path">${chains}</ul>` : ''}
+${chains ? `<h4>Sequential API chains <span class="muted">(observed in the page)</span></h4><ul class="path">${chains}</ul>` : ''}
 <h4>Waterfall <span class="muted">(representative run ${e(load.run)}${trace.nodes.length > MAX_WATERFALL_ROWS ? `, first ${MAX_WATERFALL_ROWS} of ${trace.nodes.length} requests; all are in trace.json` : ''})</span></h4>
 <figure class="chart">${inlineSvg(routeWaterfall({ routeLabel: label, trace, load }))}</figure>
 <details><summary>Hop tree</summary><pre>${e(renderTraceTree(trace).join('\n'))}</pre></details>
@@ -410,7 +410,7 @@ function renderMethod() {
 <div><dt>Timing phases</dt><dd>From the Chrome DevTools Protocol: queue, DNS, connect, TLS, send, wait (time to first byte after sending), and download. Waterfall bars show waiting (light) and downloading (solid).</dd></div>
 <div><dt>Web Vitals</dt><dd>Lab values from one device profile: TTFB, FCP, LCP, CLS (largest session window), and TBT (long-task time after FCP until collection; an approximation of the field metric).</dd></div>
 <div><dt>Hop tree</dt><dd>Parent links come from each request's initiator (the document, stylesheet, or script that caused it).</dd></div>
-<div><dt>Sequential API chains</dt><dd>An API call that started within 100 ms after another API call from the same script finished. This is inferred from timing and call stacks.</dd></div>
+<div><dt>Sequential API chains</dt><dd>An API call that the page issued while handling another API call's response (fetch, its body methods, or XMLHttpRequest completion handlers, including promise continuations). Recorded in the page as it happens; timing alone never creates a link.</dd></div>
 <div><dt>Critical path</dt><dd>Walks back from the last meaningful request (beacons excluded) through waited-for and triggered-by links.</dd></div>
 <div><dt>Server-Timing</dt><dd>When the server sends a Server-Timing header, its components (database, cache, upstream calls) are shown per endpoint. This is the only way to see backend hops from outside.</dd></div>
 <div><dt>Stress test</dt><dd>Client-side latency from request start to the last byte, measured by Node.js closed-loop virtual users. Very high request rates may be limited by the load generator itself.</dd></div>

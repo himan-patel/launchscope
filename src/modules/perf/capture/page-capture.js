@@ -1,5 +1,7 @@
 import { MOBILE_CPU_SLOWDOWN, THROTTLE_PRESETS } from './browser.js';
 import { NetworkRecorder } from './network-recorder.js';
+import { applyObservedCauses } from './causality.js';
+import { installRequestTracker } from './request-tracker.js';
 import { installVitalsObserver } from './vitals.js';
 
 const NETWORK_IDLE_MS = 500;
@@ -113,6 +115,7 @@ export async function capturePageLoad({
 
     // Requests still in flight are closed at the capture end (navigation start ≈ time origin).
     const requests = await recorder.finish(wallTimeMs);
+    applyObservedCauses(requests, (await readTrackedCalls(page)) ?? []);
     const sockets = recorder.sockets(wallTimeMs);
 
     /** @type {PageLoad} */
@@ -168,6 +171,7 @@ export async function startRecording({
   captureBody,
 }) {
   await page.addInitScript(installVitalsObserver);
+  await page.addInitScript(installRequestTracker);
   const session = await context.newCDPSession(page);
   const recorder = new NetworkRecorder(session, { inspectJson, captureBody });
   await session.send('Network.enable', { maxPostDataSize: 0 });
@@ -182,6 +186,14 @@ export async function startRecording({
     await session.send('Emulation.setCPUThrottlingRate', { rate: MOBILE_CPU_SLOWDOWN });
   }
   return { recorder };
+}
+
+/**
+ * @param {import('playwright').Page} page
+ * @returns {Promise<import('./causality.js').TrackedCall[] | null>}
+ */
+export function readTrackedCalls(page) {
+  return safeEvaluate(page, () => window.__launchscopeRequests?.() ?? []);
 }
 
 /**

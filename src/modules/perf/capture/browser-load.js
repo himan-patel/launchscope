@@ -138,6 +138,7 @@ export async function captureBrowserLoad({ context, url, settings, run }) {
           pending: false,
           jsonShape: null,
           graphql: null,
+          causedBy: null,
           frameId: null,
           isMainFrame: request.frame() === page.mainFrame(),
           streaming: request.resourceType() === 'eventsource',

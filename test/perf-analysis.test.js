@@ -93,7 +93,7 @@ describe('launchscope perf analysis (fixture app, real Chromium)', () => {
     const [chain] = findingsFor('api-chain');
     assert.ok(chain, 'api-chain finding');
     assert.equal(chain.subject.route, 'dashboard');
-    assert.ok(chain.evidence.calls >= 3, `chain of ${chain.evidence.calls}`);
+    assert.equal(chain.evidence.calls, 3);
   });
 
   it('detects the oversized, uncompressed projects payload', () => {
