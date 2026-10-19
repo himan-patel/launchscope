@@ -1,3 +1,4 @@
+import { createHash } from 'node:crypto';
 import { createServer } from 'node:http';
 import { gzipSync } from 'node:zlib';
 
@@ -79,6 +80,16 @@ const GQL_JS = `
   ]);
 })();
 `;
+
+const LIVE_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Live</title></head>
+<body><h1>Live</h1><iframe src="/about" width="300" height="150" title="About"></iframe>
+<script>
+  const socket = new WebSocket('ws://' + location.host + '/ws');
+  socket.onopen = () => socket.send('subscribe');
+  new WebSocket('ws://' + location.host + '/ws-reject');
+  new EventSource('/events');
+  fetch('/api/me');
+</script></body></html>`;
 
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
@@ -173,6 +184,18 @@ export async function startFixtureServer() {
           /(?:^|;\s*)session=valid(?:;|$)/.test(request.headers.cookie ?? '');
         return authorized ? html(PRIVATE_HTML) : send(401, 'text/plain', 'unauthorized');
       }
+      case '/live':
+        return html(LIVE_HTML);
+      case '/events': {
+        response.writeHead(200, {
+          'content-type': 'text/event-stream',
+          'cache-control': 'no-cache',
+        });
+        response.write('data: hello\n\n');
+        const timer = setInterval(() => response.write('data: tick\n\n'), 200);
+        request.on('close', () => clearInterval(timer));
+        return undefined;
+      }
       case '/gql':
         return html(GQL_HTML);
       case '/static/gql.js':
@@ -235,6 +258,28 @@ export async function startFixtureServer() {
     }
   });
 
+  /** @type {Set<import('node:stream').Duplex>} */
+  const upgraded = new Set();
+  server.on('upgrade', (request, socket) => {
+    const path = new URL(request.url ?? '/', 'http://fixture').pathname;
+    hits.set(path, (hits.get(path) ?? 0) + 1);
+    if (path !== '/ws') {
+      socket.end('HTTP/1.1 403 Forbidden\r\nconnection: close\r\n\r\n');
+      return;
+    }
+    const accept = createHash('sha1')
+      .update(`${request.headers['sec-websocket-key']}258EAFA5-E914-47DA-95CA-C5AB0DC85B11`)
+      .digest('base64');
+    socket.write(
+      `HTTP/1.1 101 Switching Protocols\r\nupgrade: websocket\r\nconnection: Upgrade\r\nsec-websocket-accept: ${accept}\r\n\r\n`,
+    );
+    const message = Buffer.from('welcome');
+    socket.write(Buffer.concat([Buffer.from([0x81, message.length]), message]));
+    upgraded.add(socket);
+    socket.on('close', () => upgraded.delete(socket));
+    socket.on('error', () => upgraded.delete(socket));
+  });
+
   await new Promise((resolve) => server.listen(0, '127.0.0.1', () => resolve(undefined)));
   const address = server.address();
   if (address === null || typeof address === 'string') throw new Error('No server address');
@@ -244,6 +289,7 @@ export async function startFixtureServer() {
     hits,
     close: () =>
       new Promise((resolve, reject) => {
+        for (const socket of upgraded) socket.destroy();
         server.closeAllConnections();
         server.close((error) => (error ? reject(error) : resolve()));
       }),

@@ -49,6 +49,7 @@ import { summarize } from './stats.js';
  * @property {string[]} consoleErrors Unique messages across runs.
  * @property {string[]} pageErrors Unique uncaught exceptions across runs.
  * @property {number | null} representativeRun
+ * @property {RealtimeSummary} realtime WebSockets, event streams, and iframes (representative load).
  */
 
 const API_TYPES = new Set(['Fetch', 'XHR']);
@@ -115,6 +116,7 @@ export function summarizeRoute({ url, slug, depth, source, loads, representative
     consoleErrors: unique(loads.flatMap((load) => load.consoleErrors)),
     pageErrors: unique(loads.flatMap((load) => load.pageErrors)),
     representativeRun: representative?.run ?? null,
+    realtime: summarizeRealtime(representative),
   };
 }
 
@@ -168,4 +170,37 @@ function safeOrigin(url) {
   } catch {
     return null;
   }
+}
+
+/**
+ * @typedef {object} RealtimeSummary
+ * @property {import('../capture/network-recorder.js').SocketRecord[]} websockets
+ * @property {Array<{ url: string, bytes: number }>} eventStreams
+ * @property {{ count: number, requests: number, transferBytes: number, origins: string[] }} iframes
+ */
+
+/**
+ * @param {PageLoad | null} load
+ * @returns {RealtimeSummary}
+ */
+function summarizeRealtime(load) {
+  const requests = load?.requests ?? [];
+  const framed = requests.filter((request) => !request.isMainFrame);
+  const frameDocuments = framed.filter((request) => request.resourceType === 'Document');
+  return {
+    websockets: load?.sockets ?? [],
+    eventStreams: requests
+      .filter((request) => request.streaming)
+      .map((request) => ({ url: request.url, bytes: request.bodyBytes })),
+    iframes: {
+      count: frameDocuments.length,
+      requests: framed.length,
+      transferBytes: framed.reduce((sum, request) => sum + request.transferBytes, 0),
+      origins: [
+        ...new Set(
+          frameDocuments.map((request) => safeOrigin(request.url)).filter((o) => o !== null),
+        ),
+      ].sort(),
+    },
+  };
 }

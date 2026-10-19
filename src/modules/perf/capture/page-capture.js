@@ -24,6 +24,7 @@ const MAX_LINKS = 500;
  * @property {string[]} consoleErrors
  * @property {string[]} pageErrors Uncaught exceptions.
  * @property {string[]} links Absolute link targets found on the page (when requested).
+ * @property {import("./network-recorder.js").SocketRecord[]} sockets WebSocket connections opened during the load.
  * @property {string | null} error Navigation error, if the page failed to load.
  */
 
@@ -109,6 +110,7 @@ export async function capturePageLoad({
 
     // Requests still in flight are closed at the capture end (navigation start ≈ time origin).
     const requests = await recorder.finish(wallTimeMs);
+    const sockets = recorder.sockets(wallTimeMs);
 
     return {
       load: {
@@ -126,6 +128,7 @@ export async function capturePageLoad({
         consoleErrors,
         pageErrors,
         links,
+        sockets,
         error,
       },
       screenshot: image,

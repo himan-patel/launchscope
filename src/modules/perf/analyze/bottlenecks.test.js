@@ -43,6 +43,11 @@ function route(overrides = {}) {
     consoleErrors: [],
     pageErrors: [],
     representativeRun: 1,
+    realtime: {
+      websockets: [],
+      eventStreams: [],
+      iframes: { count: 0, requests: 0, transferBytes: 0, origins: [] },
+    },
     ...overrides,
   };
 }
@@ -79,6 +84,7 @@ function endpoint(overrides = {}) {
     largestJsonArray: null,
     graphqlOperation: null,
     graphqlType: null,
+    streaming: false,
     ...overrides,
   };
 }

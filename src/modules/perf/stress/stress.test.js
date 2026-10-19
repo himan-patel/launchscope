@@ -104,6 +104,9 @@ function record(fields) {
     pending: false,
     jsonShape: null,
     graphql: null,
+    frameId: null,
+    isMainFrame: true,
+    streaming: false,
     ...fields,
   });
 }

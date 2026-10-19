@@ -48,6 +48,8 @@ const MAX_CHAINS = 5;
  * @property {string | null} cacheControl Response Cache-Control header, if any.
  * @property {string | null} redirectedFrom First URL requested, when the request was redirected.
  * @property {string | null} graphqlOperation GraphQL operation name, for GraphQL calls.
+ * @property {boolean} streaming Long-lived stream (server-sent events).
+ * @property {boolean} isMainFrame False for requests made by iframes.
  * @property {ServerTimingMetric[]} serverTiming
  */
 
@@ -129,6 +131,8 @@ export function buildTrace(requests, pageUrl) {
       cacheControl: request.headers['cache-control'] ?? null,
       redirectedFrom: request.redirects[0]?.url ?? null,
       graphqlOperation: request.graphql?.name ?? null,
+      streaming: request.streaming,
+      isMainFrame: request.isMainFrame,
       serverTiming: parseServerTiming(request.headers['server-timing']),
     });
   }
@@ -272,7 +276,7 @@ function findChains(nodeList, nodes) {
  */
 function findCriticalPath(nodeList, nodes) {
   const finishers = nodeList.filter(
-    (node) => !NON_BLOCKING_TYPES.has(node.resourceType) && !node.failed,
+    (node) => !NON_BLOCKING_TYPES.has(node.resourceType) && !node.failed && !node.streaming,
   );
   if (finishers.length === 0) return null;
   const last = finishers.reduce((latest, node) => (node.endMs > latest.endMs ? node : latest));

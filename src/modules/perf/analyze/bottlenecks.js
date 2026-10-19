@@ -37,6 +37,7 @@ const TEXT_TYPES = /json|javascript|ecmascript|css|html|xml|svg|text\//i;
 const MIN_COMPRESSIBLE_BYTES = 1400;
 const STATIC_TYPES = new Set(['Script', 'Stylesheet', 'Font', 'Image']);
 const LONG_LIVED_CACHE = /max-age=(?:[1-9]\d{3,})|immutable/;
+const IFRAME_HEAVY_BYTES = 500 * 1024;
 const INSTABILITY_RATIO = 2.5;
 const MIN_SAMPLES_FOR_INSTABILITY = 5;
 const CRITICAL_SEGMENT_SHARE = 0.4;
@@ -267,6 +268,44 @@ function routeFindings(route, budgets) {
       subject,
       evidence: { share: round(thirdPartyShare), requests: route.thirdParty.requests },
       impact: thirdPartyShare * 100,
+    });
+  }
+
+  for (const socket of route.realtime.websockets) {
+    const failedHandshake = socket.status !== null && socket.status !== 101;
+    if (!failedHandshake && socket.errors === 0 && socket.status !== null) continue;
+    findings.push({
+      id: `websocket:${route.slug}:${socket.url}`,
+      rule: 'websocket-failed',
+      severity: 'warning',
+      category: 'errors',
+      title: `WebSocket ${pathLabel(socket.url)} on ${label} ${socket.status === null ? 'never completed its handshake' : failedHandshake ? `was rejected (HTTP ${socket.status})` : `reported ${socket.errors} frame error(s)`}`,
+      detail: `${socket.framesReceived} frame(s) received, ${socket.framesSent} sent before capture ended.`,
+      recommendation:
+        'Check the WebSocket endpoint, proxy upgrade support, and authentication for live features.',
+      subject,
+      evidence: { status: socket.status ?? 'none', errors: socket.errors },
+      impact: 500,
+    });
+  }
+
+  const iframeBytes = route.realtime.iframes.transferBytes;
+  if (
+    route.realtime.iframes.count > 0 &&
+    (iframeBytes >= IFRAME_HEAVY_BYTES || ((weight ?? 0) > 0 && iframeBytes / (weight ?? 1) >= 0.3))
+  ) {
+    findings.push({
+      id: `iframe-weight:${route.slug}`,
+      rule: 'iframe-weight',
+      severity: 'info',
+      category: 'third-party',
+      title: `${route.realtime.iframes.count} iframe(s) on ${label} add ${formatBytes(iframeBytes)}`,
+      detail: `${route.realtime.iframes.requests} request(s) from embedded frames: ${route.realtime.iframes.origins.join(', ') || 'same origin'}.`,
+      recommendation:
+        'Lazy-load embeds (loading="lazy" or a click-to-load facade) so they do not compete with the page.',
+      subject,
+      evidence: { iframes: route.realtime.iframes.count, bytes: iframeBytes },
+      impact: iframeBytes / 1024,
     });
   }
 

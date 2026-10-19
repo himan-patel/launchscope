@@ -270,6 +270,7 @@ ${route.warmMetrics ? `<div><dt>Warm LCP p50</dt><dd>${ms(route.warmMetrics.lcpM
 ${route.pageErrors.length + route.consoleErrors.length > 0 ? `<div><dt>JS errors</dt><dd>${route.pageErrors.length} uncaught, ${route.consoleErrors.length} console</dd></div>` : ''}
 </dl>
 </div>
+${renderRealtime(route.realtime)}
 <h4>Critical path</h4>
 <p class="lede">The chain of requests that decided when the last request finished (${e(formatDuration(trace.criticalPath?.totalMs ?? 0))}).</p>
 <ol class="path">${critical}</ol>
@@ -509,3 +510,26 @@ const TOOLTIP_JS = `
   document.addEventListener('keydown', (event) => { if (event.key === 'Escape') tip.hidden = true; });
 })();
 `;
+
+/**
+ * @param {import('../analyze/routes.js').RealtimeSummary | undefined} realtime
+ * @returns {string}
+ */
+function renderRealtime(realtime) {
+  if (!realtime) return '';
+  const { websockets, eventStreams, iframes } = realtime;
+  if (websockets.length === 0 && eventStreams.length === 0 && iframes.count === 0) return '';
+  const rows = [
+    ...websockets.map(
+      (socket) =>
+        `<tr><th scope="row"><code>${e(socket.url)}</code></th><td>WebSocket</td><td>${e(socket.status ?? '–')}</td><td>${ms(socket.handshakeMs)}</td><td>${num(socket.framesReceived)} in / ${num(socket.framesSent)} out</td><td>${bytes(socket.bytesReceived + socket.bytesSent)}</td></tr>`,
+    ),
+    ...eventStreams.map(
+      (stream) =>
+        `<tr><th scope="row"><code>${e(stream.url)}</code></th><td>Event stream</td><td>–</td><td>–</td><td>–</td><td>${bytes(stream.bytes)}</td></tr>`,
+    ),
+  ].join('');
+  return `<h4>Live connections and embedded frames</h4>
+${rows ? `<div class="table-wrap"><table><caption>Long-lived connections (excluded from request timing statistics)</caption><thead><tr><th scope="col">URL</th><th scope="col">Kind</th><th scope="col">Handshake status</th><th scope="col">Handshake</th><th scope="col">Frames</th><th scope="col">Bytes</th></tr></thead><tbody>${rows}</tbody></table></div>` : ''}
+${iframes.count > 0 ? `<p>${num(iframes.count)} iframe(s) made ${num(iframes.requests)} request(s) and transferred ${bytes(iframes.transferBytes)}${iframes.origins.length ? ` (${e(iframes.origins.join(', '))})` : ''}.</p>` : ''}`;
+}
