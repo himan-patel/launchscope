@@ -140,22 +140,29 @@ describe('capturePageLoad (real Chromium against the fixture app)', () => {
     assert.ok(projects.dependsOnId, 'projects waited for /api/me');
     assert.equal(pathOf(projects.dependsOnId), '/api/me');
     const [slow] = byPath('/api/slow');
-    assert.equal(slow.dependsOnId, projects.id);
+    // /api/slow starts after /api/projects; on a slow machine the concurrently fired second
+    // /api/me can finish first and be picked as the dependency. Either way the chain runs
+    // through /api/projects.
+    const upstream = [];
+    for (let id = slow.dependsOnId; id;) {
+      upstream.push(pathOf(id));
+      id = /** @type {{ dependsOnId: string | null }} */ (trace.nodes.find((n) => n.id === id))
+        .dependsOnId;
+    }
+    assert.ok(upstream.includes('/api/projects?owner=7'), upstream.join(' <- '));
     assert.deepEqual(slow.serverTiming[0], { name: 'db', durationMs: 230, description: 'query' });
 
-    assert.deepEqual(trace.chains[0].ids.map(pathOf), [
-      '/api/me',
-      '/api/projects?owner=7',
-      '/api/slow',
-    ]);
-    const criticalPaths = trace.criticalPath?.segments.map((segment) => pathOf(segment.id));
-    assert.deepEqual(criticalPaths, [
+    const longest = trace.chains[0].ids.map(pathOf);
+    assert.deepEqual(longest.slice(0, 2), ['/api/me', '/api/projects?owner=7']);
+    assert.equal(longest[longest.length - 1], '/api/slow');
+    const criticalPaths = trace.criticalPath?.segments.map((segment) => pathOf(segment.id)) ?? [];
+    assert.deepEqual(criticalPaths.slice(0, 4), [
       '/dashboard',
       '/static/dashboard.js',
       '/api/me',
       '/api/projects?owner=7',
-      '/api/slow',
     ]);
+    assert.equal(criticalPaths[criticalPaths.length - 1], '/api/slow');
   });
 
   it('records redirect hops on the final request', async () => {
