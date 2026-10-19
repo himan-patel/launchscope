@@ -57,6 +57,11 @@ All notable changes to this project are documented here. The format follows
   replays dropped beyond `stress.maxInFlight`, and reports when the server falls behind. Charts,
   tables, CSVs, and findings label stages as users or replays per second.
 
+- Opt-in write replay for stress tests: `--stress-replay <regex>` (or `perf.stress.replay`)
+  replays matching same-origin POST/PUT/PATCH requests with the bodies captured during
+  measurement (held in memory, never written to disk), with a console warning listing them.
+  DELETE is never replayed; everything else stays GET-only.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

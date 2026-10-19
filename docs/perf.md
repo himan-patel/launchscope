@@ -456,6 +456,22 @@ The analysis reads it like a capacity test:
 | **Throughput plateau** | concurrency rose ≥ 1.5× but throughput grew < 10%: current capacity                                                                                           |
 | **Breaking point**     | first stage whose error rate crossed the `stressErrorRate` warning budget                                                                                     |
 
+### Replaying POST requests (search, GraphQL)
+
+Pages whose data comes from POST APIs are under-tested by GET-only replays. Allowlist those
+requests by path:
+
+```sh
+launchscope perf http://localhost:3000 --routes /search --stress --stress-replay '^/api/search$'
+launchscope perf http://localhost:3000 --stress --stress-replay '^/graphql$'
+```
+
+Matching same-origin **POST, PUT, and PATCH** requests are replayed with the exact body (and
+`Content-Type`) captured during measurement. Bodies are held in memory only and never written to
+any report file. Non-matching writes are never replayed, DELETE is never replayed, and the
+console lists every replayed request type with a warning, because replayed writes can create
+data. Use this against local or staging environments.
+
 ### Safety rules
 
 Stress tests generate real load, so they are deliberately hard to misuse:
@@ -464,8 +480,8 @@ Stress tests generate real load, so they are deliberately hard to misuse:
   private-network addresses (`localhost`, `127.0.0.0/8`, `10/8`, `172.16/12`, `192.168/16`, link
   local, `.local`, `.internal`, IPv6 ULA). Anything public is refused unless you pass
   `--allow-remote`, which you should only do for systems you own or are authorized to test.
-- **Read-only.** Only GET requests, only to the target origin. Never POST/PUT/DELETE, never third
-  parties.
+- **Read-only by default.** Only GET requests, only to the target origin, never third parties.
+  Writes are replayed only when you allowlist them (see below); DELETE is never replayed.
 - **Circuit breaker.** A stage stops, and no further stages run, once more than
   `stress.maxErrorRate` (default 50%) of its requests fail (after at least 20 requests).
 - **Ctrl+C** (or SIGTERM) stops the current stage, keeps what was measured, writes the report, and exits with code 130.
@@ -553,7 +569,8 @@ with `--config`). CLI flags override it. Strings may reference environment varia
       "maxErrorRate": 0.25,
       "mode": "closed",
       "rates": [2, 5, 10, 25],
-      "maxInFlight": 1000
+      "maxInFlight": 1000,
+      "replay": ["^/graphql$"]
     },
     "budgets": {
       "lcpMs": { "warning": 2000, "critical": 3500 },

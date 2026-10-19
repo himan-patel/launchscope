@@ -61,7 +61,10 @@ describe('launchscope perf --stress', () => {
       { cwd: workdir },
     );
     assert.equal(result.code, 0, result.stderr);
-    assert.match(result.stderr, /Stress test · 1 route scenario\(s\)/);
+    assert.match(
+      result.stderr,
+      /Stress test · 1 scenario\(s\), requests to http:\/\/127\.0\.0\.1:\d+ only, GET only/,
+    );
 
     const summary = JSON.parse(result.stdout);
     const { stress } = summary;

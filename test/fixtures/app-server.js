@@ -148,6 +148,20 @@ document.addEventListener('click', (event) => {
 render(location.pathname);
 `;
 
+const SEARCH_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>Search</title></head>
+<body><h1>Search</h1><ul id="results"></ul><script>
+(async () => {
+  const response = await fetch('/api/search', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify({ q: 'launch-shoes' }),
+  });
+  const results = await response.json();
+  document.getElementById('results').innerHTML = results.map((r) => '<li>' + r + '</li>').join('');
+  fetch('/api/track', { method: 'POST', body: 'viewed=search' });
+})();
+</script></body></html>`;
+
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
 const HERO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#4F46E5"/></svg>`;
@@ -168,6 +182,7 @@ const SLOW_CONCURRENCY = 4;
  * @typedef {object} FixtureServer
  * @property {string} origin e.g. http://127.0.0.1:54321
  * @property {Map<string, number>} hits Request counts by pathname.
+ * @property {Array<{ method: string, path: string, body: string }>} writes Every POST/PUT/PATCH body received.
  * @property {Array<{ path: string, traceparent: string }>} traceparents Every traceparent header received.
  * @property {(ms: number) => void} setSlowDelay Changes how long /api/slow takes (default 250 ms).
  * @property {() => Promise<void>} close
@@ -183,6 +198,8 @@ export async function startFixtureServer() {
   let slowDelayMs = 250;
   /** @type {Array<{ path: string, traceparent: string }>} */
   const traceparents = [];
+  /** @type {Array<{ method: string, path: string, body: string }>} */
+  const writes = [];
   /** @type {Array<() => void>} */
   const slowQueue = [];
 
@@ -247,6 +264,21 @@ export async function startFixtureServer() {
           request.headers.authorization === 'Bearer test-token' ||
           /(?:^|;\s*)session=valid(?:;|$)/.test(request.headers.cookie ?? '');
         return authorized ? html(PRIVATE_HTML) : send(401, 'text/plain', 'unauthorized');
+      }
+      case '/search':
+        return html(SEARCH_HTML);
+      case '/api/search':
+      case '/api/track': {
+        if (request.method === 'GET') return send(405, 'text/plain', 'use POST');
+        let body = '';
+        for await (const chunk of request) body += chunk;
+        writes.push({ method: request.method ?? '', path: url.pathname, body });
+        if (url.pathname === '/api/track') {
+          response.writeHead(204);
+          return response.end();
+        }
+        await new Promise((resolve) => setTimeout(resolve, 60));
+        return send(200, 'application/json', JSON.stringify(['a', 'b', 'c']));
       }
       case '/spa':
       case '/spa/a':
@@ -363,6 +395,7 @@ export async function startFixtureServer() {
     origin: `http://127.0.0.1:${address.port}`,
     hits,
     traceparents,
+    writes,
     setSlowDelay: (ms) => {
       slowDelayMs = ms;
     },

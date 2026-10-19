@@ -24,6 +24,8 @@ import { resolveBudgets } from './analyze/budgets.js';
  *   (rates are replays per second).
  * @property {number[]} rates Replays started per second, per stage (open mode), ascending.
  * @property {number} maxInFlight Open mode: replays allowed in flight before new ones are dropped.
+ * @property {RegExp[]} replay Same-origin POST/PUT/PATCH requests (by path) that may be replayed
+ *   with their captured bodies. Everything else is GET-only; DELETE is never replayed.
  */
 
 /**
@@ -144,6 +146,7 @@ const STRESS_CONFIG_KEYS = new Set([
   'mode',
   'rates',
   'maxInFlight',
+  'replay',
 ]);
 
 /**
@@ -183,6 +186,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {boolean} [allowRemote]
  * @property {string} [stressMode]
  * @property {string} [stressRates]
+ * @property {string[]} [stressReplay]
  */
 
 /**
@@ -293,6 +297,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
         'closed',
       ),
       rates: parseRates(cli.stressRates ?? stressSection.rates),
+      replay: parsePatterns(cli.stressReplay ?? stressSection.replay, 'Stress replay pattern'),
       maxInFlight: parseInteger(stressSection.maxInFlight, 'stress.maxInFlight', {
         min: 1,
         max: 10_000,
@@ -441,19 +446,20 @@ function optionalString(value, label) {
 
 /**
  * @param {unknown} value
+ * @param {string} [label]
  * @returns {RegExp[]}
  */
-function parsePatterns(value) {
+function parsePatterns(value, label = 'Exclude pattern') {
   if (value === undefined) return [];
   const items = typeof value === 'string' ? [value] : value;
   if (!Array.isArray(items) || !items.every((item) => typeof item === 'string')) {
-    throw new UsageError('Exclude patterns must be strings (regular expressions).');
+    throw new UsageError(`${label}s must be strings (regular expressions).`);
   }
   return items.map((source) => {
     try {
       return new RegExp(source, 'i');
     } catch (error) {
-      throw new UsageError(`Exclude pattern "${source}" is not a valid regular expression.`, {
+      throw new UsageError(`${label} "${source}" is not a valid regular expression.`, {
         cause: error,
       });
     }

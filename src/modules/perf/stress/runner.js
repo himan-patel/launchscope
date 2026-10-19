@@ -176,15 +176,18 @@ async function runStage({ scenarios, load, settings, baseHeaders, cookieFor, sig
   /** @param {import('./scenario.js').ScenarioRequest} request */
   const timedRequest = async (request) => {
     const begin = performance.now();
+    /** @type {Record<string, string>} */
     const requestHeaders = { ...baseHeaders };
     const cookie = cookieFor(request.url);
     if (cookie) requestHeaders.cookie = cookie;
+    if (request.contentType) requestHeaders['content-type'] = request.contentType;
 
     /** @type {string | null} */
     let error = null;
     try {
       const response = await fetchImpl(request.url, {
-        method: 'GET',
+        method: request.method ?? 'GET',
+        body: request.body ?? undefined,
         headers: requestHeaders,
         redirect: 'follow',
         signal: AbortSignal.timeout(settings.requestTimeoutMs),

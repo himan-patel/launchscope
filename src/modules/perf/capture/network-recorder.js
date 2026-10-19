@@ -97,6 +97,13 @@ const MAX_JSON_INSPECT_BYTES = 5 * 1024 * 1024;
  */
 
 /**
+ * @typedef {object} ReplayBody
+ * @property {string} method
+ * @property {string | null} contentType
+ * @property {string | null} body
+ */
+
+/**
  * @typedef {object} SocketRecord
  * @property {string} id
  * @property {string} url
@@ -138,16 +145,22 @@ export class NetworkRecorder {
   #originWallMs = null;
   #lastActivity = Date.now();
   #inspectJson;
+  /** @type {((record: { url: string, method: string }) => boolean) | undefined} */
+  #captureBody;
+  /** @type {Map<string, ReplayBody>} */
+  #replayBodies = new Map();
   /** @type {CdpSession} */
   #session;
 
   /**
    * @param {CdpSession} session
-   * @param {{ inspectJson?: boolean }} [options]
+   * @param {{ inspectJson?: boolean, captureBody?: (record: { url: string, method: string }) => boolean }} [options]
+   *   `captureBody` selects non-GET requests whose bodies are kept in memory for stress replay.
    */
-  constructor(session, { inspectJson = false } = {}) {
+  constructor(session, { inspectJson = false, captureBody } = {}) {
     this.#session = session;
     this.#inspectJson = inspectJson;
+    this.#captureBody = captureBody;
     session.on('Network.requestWillBeSent', (event) => this.#onRequest(event));
     session.on('Network.responseReceived', (event) => this.#onResponse(event));
     session.on('Network.dataReceived', (event) => this.#onData(event));
@@ -248,6 +261,16 @@ export class NetworkRecorder {
     if (!socket) return;
     socket.closed = true;
     socket.openMs = round(Math.max(0, this.#relative(event.timestamp) - socket.openedMs));
+  }
+
+  /**
+   * Request bodies captured for stress replay, by request id. Held in memory only; never part of
+   * the records written to disk.
+   *
+   * @returns {Map<string, ReplayBody>}
+   */
+  replayBodies() {
+    return this.#replayBodies;
   }
 
   /** Monotonic time origin (seconds) of the first request, or null before any request. */
@@ -369,6 +392,37 @@ export class NetworkRecorder {
       graphql: null,
     });
     this.#identifyGraphql(event);
+    this.#keepReplayBody(event);
+  }
+
+  /** @param {any} event */
+  #keepReplayBody(event) {
+    const record = this.#records.get(event.requestId);
+    if (!record || record.method === 'GET' || !this.#captureBody?.(record)) return;
+    const headers = /** @type {Record<string, string>} */ (event.request.headers ?? {});
+    const contentType =
+      Object.entries(headers).find(([name]) => name.toLowerCase() === 'content-type')?.[1] ?? null;
+    if (!event.request.hasPostData && !event.request.postData) {
+      this.#replayBodies.set(record.id, { method: record.method, contentType, body: null });
+      return;
+    }
+    this.#bodyInspections.push(
+      (async () => {
+        try {
+          const body =
+            event.request.postData ??
+            (await this.#session.send('Network.getRequestPostData', { requestId: record.id }))
+              .postData;
+          this.#replayBodies.set(record.id, {
+            method: record.method,
+            contentType,
+            body: body ?? null,
+          });
+        } catch {
+          // Body no longer available; the request is not replayed.
+        }
+      })(),
+    );
   }
 
   /**

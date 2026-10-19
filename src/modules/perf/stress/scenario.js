@@ -18,6 +18,9 @@ const ASSET_TYPES = new Set(['Script', 'Stylesheet', 'Image', 'Font']);
  * @property {string} url
  * @property {string} label Endpoint label used in per-hop statistics, e.g. `GET /api/me`.
  * @property {'document' | 'api' | 'asset'} kind
+ * @property {string} [method] Defaults to GET; POST/PUT/PATCH only for allowlisted requests.
+ * @property {string | null} [body] Captured request body (allowlisted requests only).
+ * @property {string | null} [contentType]
  */
 
 /**
@@ -28,7 +31,7 @@ const ASSET_TYPES = new Set(['Script', 'Stylesheet', 'Image', 'Font']);
  */
 
 /**
- * @param {Array<{ slug: string, url: string, trace: import('../trace/hop-tree.js').Trace | null }>} routes
+ * @param {Array<{ slug: string, url: string, trace: import('../trace/hop-tree.js').Trace | null, representativeLoad?: import('../capture/page-capture.js').PageLoad | null }>} routes
  * @param {{ targetOrigin: string, includeAssets: boolean }} options
  * @returns {Scenario[]}
  */
@@ -42,6 +45,9 @@ export function buildScenarios(routes, { targetOrigin, includeAssets }) {
     const root = nodes.get(trace.rootId);
     if (!root || root.failed || originOf(root.url) !== targetOrigin) continue;
 
+    const bodies = route.representativeLoad?.replayBodies ?? new Map();
+    /** @param {import('../trace/hop-tree.js').TraceNode} node */
+    const replayable = (node) => isReplayable(node, targetOrigin, includeAssets, bodies);
     /** @type {Map<string, number>} */
     const levels = new Map();
     /** @param {import('../trace/hop-tree.js').TraceNode} node @returns {number} */
@@ -50,10 +56,7 @@ export function buildScenarios(routes, { targetOrigin, includeAssets }) {
       if (known !== undefined) return known;
       levels.set(node.id, 1); // guards against cycles
       const dependency = node.dependsOnId ? nodes.get(node.dependsOnId) : undefined;
-      const level =
-        dependency && isReplayable(dependency, targetOrigin, includeAssets)
-          ? levelOf(dependency) + 1
-          : 1;
+      const level = dependency && replayable(dependency) ? levelOf(dependency) + 1 : 1;
       levels.set(node.id, level);
       return level;
     };
@@ -63,13 +66,17 @@ export function buildScenarios(routes, { targetOrigin, includeAssets }) {
       [{ url: root.redirectedFrom ?? root.url, label: label(root), kind: 'document' }],
     ];
     for (const node of trace.nodes) {
-      if (node.id === root.id || !isReplayable(node, targetOrigin, includeAssets)) continue;
+      if (node.id === root.id || !replayable(node)) continue;
       const level = levelOf(node);
       grouped[level] ??= [];
+      const captured = node.method === 'GET' ? undefined : bodies.get(node.id);
       grouped[level].push({
         url: node.url,
         label: label(node),
         kind: API_TYPES.has(node.resourceType) ? 'api' : 'asset',
+        ...(captured
+          ? { method: captured.method, body: captured.body, contentType: captured.contentType }
+          : {}),
       });
     }
     scenarios.push({ slug: route.slug, url: route.url, levels: grouped.filter(Boolean) });
@@ -139,15 +146,13 @@ export async function loadCookieJar(storageStatePath) {
  * @param {import('../trace/hop-tree.js').TraceNode} node
  * @param {string} targetOrigin
  * @param {boolean} includeAssets
+ * @param {Map<string, import('../capture/network-recorder.js').ReplayBody>} bodies
  */
-function isReplayable(node, targetOrigin, includeAssets) {
-  if (
-    node.method !== 'GET' ||
-    node.failed ||
-    node.streaming ||
-    originOf(node.url) !== targetOrigin
-  ) {
-    return false;
+function isReplayable(node, targetOrigin, includeAssets, bodies) {
+  if (node.failed || node.streaming || originOf(node.url) !== targetOrigin) return false;
+  if (node.method !== 'GET') {
+    // Only requests explicitly allowlisted (and therefore captured) are replayed.
+    return API_TYPES.has(node.resourceType) && bodies.has(node.id);
   }
   return API_TYPES.has(node.resourceType) || (includeAssets && ASSET_TYPES.has(node.resourceType));
 }

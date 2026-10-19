@@ -26,6 +26,8 @@ const MAX_LINKS = 500;
  * @property {string[]} links Absolute link targets found on the page (when requested).
  * @property {import("./network-recorder.js").SocketRecord[]} sockets WebSocket connections opened during the load.
  * @property {string | null} error Navigation error, if the page failed to load.
+ * @property {Map<string, import('./network-recorder.js').ReplayBody>} [replayBodies] Non-enumerable;
+ *   bodies of allowlisted requests for stress replay, never serialized.
  * @property {string | null} traceId W3C trace ID sent with this load's requests (with --trace-context).
  */
 
@@ -42,6 +44,8 @@ const MAX_LINKS = 500;
  * @param {boolean} [options.inspectJson] Summarize JSON response shapes (bodies are not kept).
  * @param {boolean} [options.screenshot]
  * @param {import('./trace-context.js').TraceRegistry} [options.traces] Start a trace for this load.
+ * @param {(record: { url: string, method: string }) => boolean} [options.captureBody] Keep these
+ *   requests' bodies in memory (as the non-enumerable `replayBodies` on the load) for stress replay.
  * @returns {Promise<{ load: PageLoad, screenshot: Buffer | null }>}
  */
 export async function capturePageLoad({
@@ -54,6 +58,7 @@ export async function capturePageLoad({
   inspectJson = false,
   screenshot = false,
   traces,
+  captureBody,
 }) {
   const page = await context.newPage();
   const traceId = traces ? traces.startTrace(page) : null;
@@ -71,7 +76,14 @@ export async function capturePageLoad({
   });
 
   try {
-    const { recorder } = await startRecording({ context, page, settings, cache, inspectJson });
+    const { recorder } = await startRecording({
+      context,
+      page,
+      settings,
+      cache,
+      inspectJson,
+      captureBody,
+    });
 
     const startedAt = new Date();
     const wallStart = performance.now();
@@ -103,28 +115,32 @@ export async function capturePageLoad({
     const requests = await recorder.finish(wallTimeMs);
     const sockets = recorder.sockets(wallTimeMs);
 
-    return {
-      load: {
-        url,
-        finalUrl: response?.url() ?? null,
-        cache,
-        run,
-        status: response?.status() ?? null,
-        title,
-        startedAt: startedAt.toISOString(),
-        wallTimeMs,
-        networkIdle,
-        vitals,
-        requests,
-        consoleErrors,
-        pageErrors,
-        links,
-        sockets,
-        error,
-        traceId,
-      },
-      screenshot: image,
+    /** @type {PageLoad} */
+    const load = {
+      url,
+      finalUrl: response?.url() ?? null,
+      cache,
+      run,
+      status: response?.status() ?? null,
+      title,
+      startedAt: startedAt.toISOString(),
+      wallTimeMs,
+      networkIdle,
+      vitals,
+      requests,
+      consoleErrors,
+      pageErrors,
+      links,
+      sockets,
+      error,
+      traceId,
     };
+    // Replay bodies stay off the serialized load: JSON.stringify skips non-enumerable properties.
+    Object.defineProperty(load, 'replayBodies', {
+      value: recorder.replayBodies(),
+      enumerable: false,
+    });
+    return { load, screenshot: image };
   } finally {
     await page.close().catch(() => {});
   }
@@ -140,12 +156,20 @@ export async function capturePageLoad({
  * @param {import('../settings.js').PerfSettings} options.settings
  * @param {'cold' | 'warm'} options.cache
  * @param {boolean} [options.inspectJson]
+ * @param {(record: { url: string, method: string }) => boolean} [options.captureBody]
  * @returns {Promise<{ recorder: NetworkRecorder }>}
  */
-export async function startRecording({ context, page, settings, cache, inspectJson = false }) {
+export async function startRecording({
+  context,
+  page,
+  settings,
+  cache,
+  inspectJson = false,
+  captureBody,
+}) {
   await page.addInitScript(installVitalsObserver);
   const session = await context.newCDPSession(page);
-  const recorder = new NetworkRecorder(session, { inspectJson });
+  const recorder = new NetworkRecorder(session, { inspectJson, captureBody });
   await session.send('Network.enable', { maxPostDataSize: 0 });
   if (cache === 'cold') await session.send('Network.setCacheDisabled', { cacheDisabled: true });
   if (settings.throttle !== 'none') {

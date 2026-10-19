@@ -29,7 +29,8 @@
       "maxErrorRate": 0.25,
       "mode": "closed",
       "rates": [2, 5, 10, 25],
-      "maxInFlight": 1000
+      "maxInFlight": 1000,
+      "replay": ["^/graphql$"]
     },
     "budgets": {
       "lcpMs": { "warning": 2000, "critical": 3500 },
