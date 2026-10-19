@@ -26,6 +26,7 @@ const MAX_LINKS = 500;
  * @property {string[]} links Absolute link targets found on the page (when requested).
  * @property {import("./network-recorder.js").SocketRecord[]} sockets WebSocket connections opened during the load.
  * @property {string | null} error Navigation error, if the page failed to load.
+ * @property {string | null} traceId W3C trace ID sent with this load's requests (with --trace-context).
  */
 
 /**
@@ -40,6 +41,7 @@ const MAX_LINKS = 500;
  * @param {boolean} [options.collectLinks]
  * @param {boolean} [options.inspectJson] Summarize JSON response shapes (bodies are not kept).
  * @param {boolean} [options.screenshot]
+ * @param {import('./trace-context.js').TraceRegistry} [options.traces] Start a trace for this load.
  * @returns {Promise<{ load: PageLoad, screenshot: Buffer | null }>}
  */
 export async function capturePageLoad({
@@ -51,8 +53,10 @@ export async function capturePageLoad({
   collectLinks = false,
   inspectJson = false,
   screenshot = false,
+  traces,
 }) {
   const page = await context.newPage();
+  const traceId = traces ? traces.startTrace(page) : null;
   /** @type {string[]} */
   const consoleErrors = [];
   /** @type {string[]} */
@@ -130,6 +134,7 @@ export async function capturePageLoad({
         links,
         sockets,
         error,
+        traceId,
       },
       screenshot: image,
     };

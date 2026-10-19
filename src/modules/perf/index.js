@@ -52,6 +52,14 @@ export function registerPerf(program, services) {
     .optionsGroup('Authentication:')
     .option('--storage-state <file>', 'saved login session (see "launchscope login")')
     .option('-H, --header <header>', 'extra "Name: value" header for the target origin', collect)
+    .option(
+      '--trace-context',
+      'send a W3C traceparent header so backend traces line up with each load',
+    )
+    .option(
+      '--trace-url <template>',
+      'link traces in the report, e.g. https://tracing.example.com/trace/{traceId}',
+    )
     .optionsGroup('Stress testing:')
     .option('--stress', 'stress test the measured routes after measuring them')
     .option('--stress-stages <list>', 'concurrent users per stage (default: 1,5,10,25,50)')

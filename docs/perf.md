@@ -122,6 +122,20 @@ origins and never written to reports):
 launchscope perf https://staging.example.com -H "Authorization: Bearer $STAGING_TOKEN"
 ```
 
+### Line up backend traces with each page load
+
+```sh
+launchscope perf https://staging.example.com --trace-context
+launchscope perf https://staging.example.com --trace-url 'https://tracing.example.com/trace/{traceId}'
+```
+
+Each measured page load gets its own W3C trace ID. Every request it makes to the target origin
+carries a `traceparent` header (sampled, with a fresh span ID per request), so a backend
+instrumented with OpenTelemetry or another W3C Trace Context tracer records its database,
+cache, and service calls under that trace. The report lists each load's trace ID per route, or
+links to it when `--trace-url` is given. Headers are never added to other origins, and the stress
+test does not send them (it would flood your tracing backend).
+
 ### Mobile and slow networks
 
 ```sh
@@ -430,6 +444,7 @@ with `--config`). CLI flags override it. Strings may reference environment varia
     "browserChannel": "chrome",
     "storageState": ".auth/session.json",
     "headers": { "Authorization": "Bearer ${STAGING_API_TOKEN}" },
+    "traceContext": { "urlTemplate": "https://tracing.example.com/trace/{traceId}" },
     "failOn": "critical",
     "baseline": "latest",
     "stress": {
@@ -505,9 +520,9 @@ is in [`examples/github-actions.yml`](../examples/github-actions.yml).
 - **TBT is approximated** (long tasks after FCP until collection, not until Time to Interactive).
 - **API chains are inferred** from timing and call stacks; a call that merely happened to start
   soon after another one from the same script can be reported as dependent.
-- **Backend hops** (database, cache, upstream services) are only visible when your server sends
-  `Server-Timing` headers. Adding them is the fastest way to make `slow-endpoint` findings
-  actionable.
+- **Backend hops** (database, cache, upstream services) are visible in two ways: `Server-Timing`
+  response headers (shown per endpoint) and, with `--trace-context`, your own tracing backend,
+  where each page load is one trace.
 - **Service workers are blocked** during measurement so every request is visible.
 - **Stress latency is client-side** and measured by Node.js; at very high request rates the load
   generator itself can become the limit. For large-scale load tests use a dedicated tool; use

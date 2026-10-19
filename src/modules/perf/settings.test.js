@@ -148,6 +148,36 @@ describe('resolvePerfSettings', () => {
   });
 });
 
+describe('trace context settings', () => {
+  it('is off by default and enabled by flag, config, or a URL template', () => {
+    assert.deepEqual(resolveWith().traceContext, { enabled: false, urlTemplate: undefined });
+    assert.equal(resolveWith({ cli: { traceContext: true } }).traceContext.enabled, true);
+    assert.equal(resolveWith({ config: { traceContext: true } }).traceContext.enabled, true);
+    assert.deepEqual(
+      resolveWith({ config: { traceContext: { urlTemplate: 'https://t.test/{traceId}' } } })
+        .traceContext,
+      { enabled: true, urlTemplate: 'https://t.test/{traceId}' },
+    );
+    assert.deepEqual(
+      resolveWith({ cli: { traceUrl: 'https://t.test/x/{traceId}' } }).traceContext,
+      {
+        enabled: true,
+        urlTemplate: 'https://t.test/x/{traceId}',
+      },
+    );
+  });
+
+  it('validates the template and config shape', () => {
+    assert.throws(
+      () => resolveWith({ cli: { traceUrl: 'ftp://t.test/{traceId}' } }),
+      /http\(s\) URL/,
+    );
+    assert.throws(() => resolveWith({ cli: { traceUrl: 'https://t.test/trace' } }), /\{traceId\}/);
+    assert.throws(() => resolveWith({ config: { traceContext: { url: 'x' } } }), /Unknown key/);
+    assert.throws(() => resolveWith({ config: { traceContext: 'yes' } }), /true\/false/);
+  });
+});
+
 describe('toReportableSettings', () => {
   it('redacts header values so secrets never reach report files', () => {
     const settings = resolveWith({ cli: { header: ['Authorization: Bearer secret-token'] } });

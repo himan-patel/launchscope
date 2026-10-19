@@ -50,6 +50,7 @@ import { summarize } from './stats.js';
  * @property {string[]} pageErrors Unique uncaught exceptions across runs.
  * @property {number | null} representativeRun
  * @property {RealtimeSummary} realtime WebSockets, event streams, and iframes (representative load).
+ * @property {Array<{ run: number, cache: 'cold' | 'warm', traceId: string }>} traces Trace IDs per load (with --trace-context).
  */
 
 const API_TYPES = new Set(['Fetch', 'XHR']);
@@ -117,6 +118,9 @@ export function summarizeRoute({ url, slug, depth, source, loads, representative
     pageErrors: unique(loads.flatMap((load) => load.pageErrors)),
     representativeRun: representative?.run ?? null,
     realtime: summarizeRealtime(representative),
+    traces: loads.flatMap((load) =>
+      load.traceId ? [{ run: load.run, cache: load.cache, traceId: load.traceId }] : [],
+    ),
   };
 }
 
