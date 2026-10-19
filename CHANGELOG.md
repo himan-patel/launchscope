@@ -30,6 +30,18 @@ All notable changes to this project are documented here. The format follows
   per path. `routes.json` records what was measured and why other URLs were skipped.
 - `launchscope login <url>`: sign in once in a real browser window (SSO and MFA work) and save
   the session (owner-only file permissions) for `--storage-state`.
+- Analysis for `perf`: per-route cold/warm distributions (p50/p75/p90/p95/p99) for Web Vitals,
+  load time, requests, bytes, third-party weight, and API calls; per-endpoint statistics across
+  all routes with templated paths (`/api/items/:id`), timing breakdowns, sizes, status codes,
+  Server-Timing summaries, and JSON collection sizes.
+- Bottleneck detection with severities (critical, warning, info), evidence, and recommendations:
+  Web Vitals, slow and unstable endpoints (with the dominant Server-Timing component), large and
+  oversized payloads, missing compression, duplicate calls, sequential API chains, dominant
+  critical-path requests, redirects, failing routes and endpoints, page weight, request count,
+  third-party weight, JavaScript errors, and static assets without long-lived caching.
+- Configurable budgets (`perf.budgets`), `summary.json`, `endpoints.json`, `bottlenecks.json`,
+  `--json` (summary on stdout), and `--fail-on warning|critical` (exit code 1, reports still
+  written).
 
 - `launchscope` CLI with branded help, `--version`, and global options for config, output
   directory, color, and verbosity.

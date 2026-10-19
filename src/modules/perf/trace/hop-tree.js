@@ -45,6 +45,8 @@ const MAX_CHAINS = 5;
  * @property {boolean} thirdParty Not on the page's origin.
  * @property {boolean} failed
  * @property {number} redirectCount
+ * @property {string | null} cacheControl Response Cache-Control header, if any.
+ * @property {string | null} redirectedFrom First URL requested, when the request was redirected.
  * @property {ServerTimingMetric[]} serverTiming
  */
 
@@ -123,6 +125,8 @@ export function buildTrace(requests, pageUrl) {
       thirdParty: safeOrigin(request.url) !== pageOrigin,
       failed: request.failure !== null || (request.status !== null && request.status >= 400),
       redirectCount: request.redirects.length,
+      cacheControl: request.headers['cache-control'] ?? null,
+      redirectedFrom: request.redirects[0]?.url ?? null,
       serverTiming: parseServerTiming(request.headers['server-timing']),
     });
   }
