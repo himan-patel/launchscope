@@ -14,7 +14,7 @@
   <a href="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml"><img src="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22.19-339933.svg" alt="Node.js 22.19 or newer">
-  <img src="https://img.shields.io/badge/version-0.3.0-4f46e5.svg" alt="Version 0.3.0">
+  <img src="https://img.shields.io/badge/version-0.4.0-4f46e5.svg" alt="Version 0.4.0">
 </p>
 
 ---
