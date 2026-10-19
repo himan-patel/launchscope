@@ -23,6 +23,7 @@ const SITEMAP_TIMEOUT_MS = 10_000;
  * @property {import('./trace/hop-tree.js').Trace | null} trace From the representative load.
  * @property {import('./capture/page-capture.js').PageLoad | null} representativeLoad
  * @property {boolean} hasScreenshot
+ * @property {string[]} links Links found on the page (first cold run), for navigation pairs.
  */
 
 /**
@@ -116,6 +117,7 @@ export async function measureRoutes({
         trace,
         representativeLoad: representative,
         hasScreenshot: measurement.screenshot !== null,
+        links: measurement.links,
       });
 
       logger.info(formatRouteLine(summary, logger.paint));

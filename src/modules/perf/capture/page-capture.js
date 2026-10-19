@@ -71,20 +71,7 @@ export async function capturePageLoad({
   });
 
   try {
-    await page.addInitScript(installVitalsObserver);
-    const session = await context.newCDPSession(page);
-    const recorder = new NetworkRecorder(session, { inspectJson });
-    await session.send('Network.enable', { maxPostDataSize: 0 });
-    if (cache === 'cold') await session.send('Network.setCacheDisabled', { cacheDisabled: true });
-    if (settings.throttle !== 'none') {
-      await session.send('Network.emulateNetworkConditions', {
-        offline: false,
-        ...THROTTLE_PRESETS[settings.throttle],
-      });
-    }
-    if (settings.device === 'mobile') {
-      await session.send('Emulation.setCPUThrottlingRate', { rate: MOBILE_CPU_SLOWDOWN });
-    }
+    const { recorder } = await startRecording({ context, page, settings, cache, inspectJson });
 
     const startedAt = new Date();
     const wallStart = performance.now();
@@ -141,6 +128,36 @@ export async function capturePageLoad({
   } finally {
     await page.close().catch(() => {});
   }
+}
+
+/**
+ * Prepares a page for measurement: the in-page vitals observer, a CDP network recorder, and the
+ * cache, network throttling, and CPU slowdown settings of the run.
+ *
+ * @param {object} options
+ * @param {import('playwright').BrowserContext} options.context
+ * @param {import('playwright').Page} options.page
+ * @param {import('../settings.js').PerfSettings} options.settings
+ * @param {'cold' | 'warm'} options.cache
+ * @param {boolean} [options.inspectJson]
+ * @returns {Promise<{ recorder: NetworkRecorder }>}
+ */
+export async function startRecording({ context, page, settings, cache, inspectJson = false }) {
+  await page.addInitScript(installVitalsObserver);
+  const session = await context.newCDPSession(page);
+  const recorder = new NetworkRecorder(session, { inspectJson });
+  await session.send('Network.enable', { maxPostDataSize: 0 });
+  if (cache === 'cold') await session.send('Network.setCacheDisabled', { cacheDisabled: true });
+  if (settings.throttle !== 'none') {
+    await session.send('Network.emulateNetworkConditions', {
+      offline: false,
+      ...THROTTLE_PRESETS[settings.throttle],
+    });
+  }
+  if (settings.device === 'mobile') {
+    await session.send('Emulation.setCPUThrottlingRate', { rate: MOBILE_CPU_SLOWDOWN });
+  }
+  return { recorder };
 }
 
 /**

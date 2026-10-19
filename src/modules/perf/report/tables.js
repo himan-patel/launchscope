@@ -235,6 +235,21 @@ export function summaryMarkdown(summary) {
           `| \`${md(endpointLabel(endpoint))}\` | ${endpoint.calls} | ${dur(endpoint.durationMs?.p50)} | ${dur(endpoint.durationMs?.p95)} | ${dur(endpoint.waitMs?.p50)} | ${size(endpoint.bodyBytes?.p50)} |`,
       ),
   );
+  if (summary.navigations && summary.navigations.length > 0) {
+    /** @type {import('../navigation-phase.js').NavigationSummary[]} */
+    const navigations = summary.navigations;
+    lines.push(
+      '',
+      '## Client-side navigations',
+      '',
+      '| Navigation | Kind | Duration | Requests | Transferred |',
+      '| --- | --- | ---: | ---: | ---: |',
+      ...navigations.map(
+        (navigation) =>
+          `| ${md(routeLabel(navigation.from))} → ${md(routeLabel(navigation.to))} | ${navigation.kind === 'soft' ? 'client-side' : navigation.kind === 'full' ? 'full page load' : 'failed'} | ${dur(navigation.durationMs?.p50)} | ${navigation.requestCount ? Math.round(navigation.requestCount.p50) : '–'} | ${size(navigation.transferBytes?.p50)} |`,
+      ),
+    );
+  }
   if (summary.comparison) {
     /** @type {import('../analyze/compare.js').Comparison} */
     const comparison = summary.comparison;

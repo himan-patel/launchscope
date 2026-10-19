@@ -41,6 +41,12 @@ All notable changes to this project are documented here. The format follows
   Express. Dynamic segments come from `perf.routeParams`; routes needing unknown values are
   skipped and listed in `repo.json`.
 
+- Client-side navigation measurement (`--spa`, `--spa-max`): clicks links between measured routes
+  like a user and measures each transition from click until network and DOM settle (network and
+  render split, requests, API calls, bytes, sequential API chain), detects full-page reloads,
+  and adds `slow-navigation` (budget `navigationMs`), `navigation-api-chain`,
+  `full-reload-navigation`, and `navigation-failed` findings plus a report section.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

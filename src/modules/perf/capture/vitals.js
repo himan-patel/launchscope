@@ -53,6 +53,33 @@ export function installVitalsObserver() {
     state.longTasks.push([entry.startTime, entry.duration]);
   });
 
+  // Last DOM change, used to tell when a client-side navigation has finished rendering.
+  let lastMutation = 0;
+  const startMutationObserver = () => {
+    try {
+      new MutationObserver(() => {
+        lastMutation = performance.now();
+      }).observe(document, {
+        subtree: true,
+        childList: true,
+        attributes: true,
+        characterData: true,
+      });
+    } catch {
+      // MutationObserver unavailable; navigation timing falls back to network activity.
+    }
+  };
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', startMutationObserver, { once: true });
+  } else {
+    startMutationObserver();
+  }
+  Object.defineProperty(window, '__launchscopeLastMutation', {
+    configurable: false,
+    enumerable: false,
+    value: () => lastMutation,
+  });
+
   Object.defineProperty(window, '__launchscopeVitals', {
     configurable: false,
     enumerable: false,

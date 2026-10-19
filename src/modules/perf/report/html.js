@@ -58,13 +58,14 @@ export function renderHtmlReport({ summary, details }) {
 <header class="top">
   <div class="brand">${LOGO}<div><p class="eyebrow">${e(BRAND.name)} performance report</p><h1>${e(host)}</h1></div></div>
   <p class="meta">${e(summary.target)} · ${e(formatDate(summary.startedAt))} · ${e(describeSettings(summary.settings))}</p>
-  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
+  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
 </header>
 <main id="main">
 ${renderSummary(summary, routes)}
 ${renderFindings(findings)}
 ${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
 ${renderEndpoints(endpoints, summary.openapi)}
+${summary.navigations ? renderNavigations(summary.navigations) : ''}
 ${stress ? renderStress(stress) : ''}
 ${summary.comparison ? renderComparison(summary.comparison) : ''}
 ${renderMethod()}
@@ -647,4 +648,29 @@ function renderOpenApiNote(openapi) {
     .join('');
   return `<p>${num(openapi.measured)} GET operation(s) from <code>${e(openapi.source)}</code> were also measured directly. Endpoints marked "API spec only" are not called by any measured page.</p>
 ${skipped ? `<details><summary>${num(openapi.skipped.length)} operation(s) not called</summary><ul class="path">${skipped}</ul></details>` : ''}`;
+}
+
+/**
+ * @param {import('../navigation-phase.js').NavigationSummary[]} navigations
+ * @returns {string}
+ */
+function renderNavigations(navigations) {
+  const rows = navigations
+    .map((navigation) => {
+      const kind =
+        navigation.kind === 'soft'
+          ? 'client-side'
+          : navigation.kind === 'full'
+            ? 'full page load'
+            : `<span class="bad">failed</span>`;
+      return `<tr><th scope="row">${e(routeLabel(navigation.from))} → ${e(routeLabel(navigation.to))}</th><td>${navigation.kind === 'failed' ? kind : e(kind)}</td><td>${ms(navigation.durationMs?.p50)}</td><td>${ms(navigation.durationMs?.p95)}</td><td>${ms(navigation.networkMs?.p50)}</td><td>${ms(navigation.renderMs?.p50)}</td><td>${num(navigation.requestCount?.p50)}</td><td>${num(navigation.apiCalls?.p50)}</td><td>${bytes(navigation.transferBytes?.p50)}</td><td>${e(navigation.chainLabels.length > 1 ? navigation.chainLabels.join(' → ') : '–')}</td></tr>`;
+    })
+    .join('');
+  return `<section id="navigations" aria-labelledby="navigations-h"><h2 id="navigations-h">Client-side navigations</h2>
+<p class="lede">Each row clicks a link from one measured page to another, the way a user would, and measures from the click until the network and the DOM settle. "Client-side" means the app's router handled it without loading a new document.</p>
+<div class="table-wrap"><table><caption>Navigations (medians unless noted)</caption>
+<thead><tr><th scope="col">Navigation</th><th scope="col">Kind</th><th scope="col">Duration</th><th scope="col">Duration p95</th><th scope="col">Network</th><th scope="col">Render</th><th scope="col">Requests</th><th scope="col">API calls</th><th scope="col">Transferred</th><th scope="col">Sequential API chain</th></tr></thead>
+<tbody>${rows}</tbody></table></div>
+<p class="files">Files: <a href="navigations.json">navigations.json</a></p>
+</section>`;
 }
