@@ -4,7 +4,7 @@ import { BRAND } from '../../core/brand.js';
 import { formatBytes, formatDuration } from '../../core/duration.js';
 import { ExitCode, LaunchScopeError } from '../../core/errors.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
-import { SEVERITY_ORDER } from './analyze/bottlenecks.js';
+import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
 import { analyzeRun, countBySeverity } from './analyze/index.js';
 import { summarize } from './analyze/stats.js';
 import { launchBrowser } from './capture/browser.js';
@@ -12,6 +12,10 @@ import { readSitemap, RouteQueue } from './discover/routes.js';
 import { measureRoute } from './measure.js';
 import { createSlugAllocator } from './report/paths.js';
 import { toReportableSettings } from './settings.js';
+import { analyzeStress } from './stress/analyze.js';
+import { runStress } from './stress/runner.js';
+import { assertStressAllowed } from './stress/safety.js';
+import { buildScenarios, loadCookieJar } from './stress/scenario.js';
 import { buildTrace, pickRepresentativeLoad, renderTraceTree } from './trace/hop-tree.js';
 
 const SITEMAP_TIMEOUT_MS = 10_000;
@@ -55,6 +59,21 @@ export async function runPerf(settings, runtime) {
   const perfDirectory = join(runDirectory, 'perf');
   await mkdir(perfDirectory, { recursive: true });
   await writeJsonFile(join(perfDirectory, 'settings.json'), toReportableSettings(settings));
+
+  if (settings.stress.enabled) {
+    const safety = await assertStressAllowed({
+      targetUrl: settings.targetUrl,
+      allowRemote: settings.stress.allowRemote,
+    });
+    logger.info(
+      `Stress   stages ${settings.stress.stages.join(' → ')} concurrent users, ${formatDuration(settings.stress.stageDurationMs)} each`,
+    );
+    if (safety.remote) {
+      logger.warn(
+        `Stress testing a public host (${safety.addresses.join(', ')}). Only do this on systems you own or are authorized to test.`,
+      );
+    }
+  }
 
   if (settings.dryRun) {
     logger.success(`Dry run: settings resolved and written to ${perfDirectory}`);
@@ -120,6 +139,15 @@ export async function runPerf(settings, runtime) {
     })),
     settings.budgets,
   );
+
+  const stress = settings.stress.enabled
+    ? await runStressPhase({ settings, results, perfDirectory, logger })
+    : null;
+  if (stress) {
+    analysis.bottlenecks = sortFindings([...analysis.bottlenecks, ...stress.findings]);
+    analysis.totals.findings = countBySeverity(analysis.bottlenecks);
+  }
+
   const summary = {
     schemaVersion: 1,
     tool: { name: BRAND.command, version: BRAND.version },
@@ -131,6 +159,7 @@ export async function runPerf(settings, runtime) {
     routes: analysis.routes,
     endpoints: analysis.endpoints,
     bottlenecks: analysis.bottlenecks,
+    stress: stress ? { ...stress.result, insights: stress.insights } : null,
     skippedUrls: queue.skipped,
   };
   await writeJsonFile(join(perfDirectory, 'summary.json'), summary);
@@ -150,6 +179,74 @@ export async function runPerf(settings, runtime) {
 
   if (settings.json) io.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   enforceFailOn(analysis.bottlenecks, settings.failOn);
+}
+
+/**
+ * Replays the measured routes under increasing concurrency and writes `stress/` artifacts.
+ * Ctrl+C stops the current stage and keeps what was measured so far.
+ *
+ * @param {object} options
+ * @param {import('./settings.js').PerfSettings} options.settings
+ * @param {RouteResult[]} options.results
+ * @param {string} options.perfDirectory
+ * @param {import('../../core/logger.js').Logger} options.logger
+ * @returns {Promise<{ result: import('./stress/runner.js').StressResult, insights: import('./stress/analyze.js').StressInsights, findings: import('./analyze/bottlenecks.js').Finding[] } | null>}
+ */
+async function runStressPhase({ settings, results, perfDirectory, logger }) {
+  const { paint } = logger;
+  const scenarios = buildScenarios(results, {
+    targetOrigin: settings.targetUrl.origin,
+    includeAssets: settings.stress.includeAssets,
+  });
+  if (scenarios.length === 0) {
+    logger.warn('Skipping the stress test: no route loaded successfully on the target origin.');
+    return null;
+  }
+
+  const cookieFor = await loadCookieJar(settings.storageStatePath);
+  const controller = new AbortController();
+  const onInterrupt = () => {
+    logger.warn('Stopping the stress test after the current requests…');
+    controller.abort();
+  };
+  process.once('SIGINT', onInterrupt);
+
+  logger.info('');
+  logger.info(
+    paint.bold('Stress test') +
+      paint.dim(
+        ` · ${scenarios.length} route scenario(s), GET requests to ${settings.targetUrl.origin} only`,
+      ),
+  );
+  let result;
+  try {
+    result = await runStress({
+      scenarios,
+      settings: settings.stress,
+      headers: settings.headers,
+      cookieFor,
+      signal: controller.signal,
+      onStage: (stage) => {
+        const icon = stage.errorRate > 0 ? paint.yellow('!') : paint.green('✔');
+        logger.info(
+          `  ${icon} ${String(stage.concurrency).padStart(4)} users  ` +
+            paint.dim(
+              `${stage.requestsPerSecond.toFixed(1)} req/s · p50 ${formatDuration(stage.latencyMs?.p50 ?? Number.NaN)} · ` +
+                `p95 ${formatDuration(stage.latencyMs?.p95 ?? Number.NaN)} · errors ${(stage.errorRate * 100).toFixed(1)}%`,
+            ),
+        );
+      },
+    });
+  } finally {
+    process.removeListener('SIGINT', onInterrupt);
+  }
+  if (result.stoppedReason) logger.warn(result.stoppedReason);
+
+  const { insights, findings } = analyzeStress(result, settings.budgets);
+  const stressDirectory = join(perfDirectory, 'stress');
+  await mkdir(stressDirectory, { recursive: true });
+  await writeJsonFile(join(stressDirectory, 'stress.json'), { ...result, insights });
+  return { result, insights, findings };
 }
 
 const MAX_FINDINGS_IN_CONSOLE = 10;
