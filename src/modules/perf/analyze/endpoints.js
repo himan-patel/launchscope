@@ -56,7 +56,7 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {string | null} graphqlOperation GraphQL operation name; endpoints are split by it.
  * @property {import('../capture/graphql.js').OperationType | null} graphqlType
  * @property {boolean} streaming A server-sent event stream; excluded from timing statistics.
- * @property {Array<'page' | 'openapi'>} discoveredBy Called by measured pages, measured from the OpenAPI spec, or both.
+ * @property {Array<'page' | 'openapi' | 'repo'>} discoveredBy Called by measured pages, found in the OpenAPI spec, and/or found in the repository.
  */
 
 /**
@@ -64,7 +64,7 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {string} routeSlug
  * @property {string} pageOrigin
  * @property {RequestRecord[]} requests
- * @property {'page' | 'openapi'} [source] How the requests were made (default: page loads).
+ * @property {'page' | 'openapi' | 'repo'} [source] How the requests were made (default: page loads).
  */
 
 /**
@@ -93,7 +93,7 @@ export function templatePath(pathname) {
  * routes never has to keep every request of every load in memory at once.
  */
 export class EndpointAccumulator {
-  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes' | 'discoveredBy'>, routes: Set<string>, sources: Set<'page' | 'openapi'>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
+  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes' | 'discoveredBy'>, routes: Set<string>, sources: Set<'page' | 'openapi' | 'repo'>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
   #groups = new Map();
 
   /**

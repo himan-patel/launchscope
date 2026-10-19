@@ -623,13 +623,14 @@ function renderTraces(traces, template) {
 }
 
 /**
- * @param {Array<'page' | 'openapi'> | undefined} sources
+ * @param {Array<'page' | 'openapi' | 'repo'> | undefined} sources
  * @returns {string}
  */
 function sourceLabel(sources) {
   if (!sources || sources.length === 0) return 'page';
-  if (sources.length === 2) return 'page + API spec';
-  return sources[0] === 'openapi' ? 'API spec only' : 'page';
+  const names = { page: 'page', openapi: 'API spec', repo: 'repository' };
+  const labels = sources.map((source) => names[source]);
+  return sources.includes('page') ? labels.join(' + ') : `${labels.join(' + ')} only`;
 }
 
 /**

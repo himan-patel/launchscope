@@ -16,7 +16,7 @@ const MAX_QUERY_VARIANTS_PER_PATH = 3;
  * @typedef {object} QueuedRoute
  * @property {string} url
  * @property {number} depth 0 for seeds, +1 per crawled link.
- * @property {'seed' | 'sitemap' | 'link'} source
+ * @property {'seed' | 'sitemap' | 'link' | 'repo'} source
  */
 
 /**

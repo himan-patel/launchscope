@@ -103,6 +103,31 @@ launchscope perf https://staging.example.com --depth 2 --max-routes 40 --exclude
 
 Logout links are never followed, whatever you configure.
 
+### Find routes in your source code
+
+```sh
+launchscope perf http://localhost:3000 --repo .
+```
+
+Pages that nothing links to (onboarding steps, settings screens, admin pages) are easy to miss
+when crawling. `--repo` reads routes from the app's source:
+
+| Router                       | How routes are found                                                                                      | API routes measured directly       |
+| ---------------------------- | --------------------------------------------------------------------------------------------------------- | ---------------------------------- |
+| Next.js App Router           | `app/**/page.*` (route groups, parallel and private folders handled)                                      | `app/**/route.*` exporting `GET`   |
+| Next.js Pages Router         | `pages/**` (in projects that depend on `next`)                                                            | `pages/api/**`                     |
+| SvelteKit                    | `src/routes/**/+page.svelte`                                                                              | `+server.(js\|ts)` exporting `GET` |
+| Nuxt / Astro                 | `pages/**/*.vue` / `src/pages/**`                                                                         | –                                  |
+| Remix / React Router v7      | `app/routes/*` flat file routes                                                                           | –                                  |
+| Angular, React Router (code) | `path:` / `<Route path>` in route files (best effort; nested child paths are listed without their parent) | –                                  |
+| Express                      | –                                                                                                         | `app.get(…)` / `router.get(…)`     |
+
+Dynamic segments (`[slug]`, `:id`, `$id`) are filled from `perf.routeParams` in the config file,
+for example `{ "routeParams": { "slug": "hello-world", "id": "42" } }`. Routes that still need a
+value are listed as skipped in `repo.json` and never guessed. Repository pages are measured like
+sitemap pages (counted against `--max-routes`, not crawled further), and repository API routes are
+measured directly over HTTP (labeled "repository" in the endpoints table).
+
 ### Measure API endpoints from an OpenAPI spec
 
 ```sh
@@ -234,6 +259,7 @@ launchscope-reports/<host>[-port]_<UTC timestamp>/perf/
 ├── endpoints.json      per-endpoint statistics
 ├── routes.json         measured routes and why other URLs were skipped
 ├── settings.json       the resolved settings (header values redacted)
+├── repo.json           routes found in the repository and those needing routeParams
 ├── openapi.json        operations measured from the OpenAPI spec and why others were skipped
 ├── routes.csv          one row per route
 ├── endpoints.csv       one row per endpoint
@@ -453,6 +479,8 @@ with `--config`). CLI flags override it. Strings may reference environment varia
     "routes": ["/", "/pricing", "/app/dashboard"],
     "maxRoutes": 25,
     "openapi": "auto",
+    "repo": ".",
+    "routeParams": { "slug": "hello-world", "id": "42" },
     "depth": 1,
     "sitemap": true,
     "exclude": ["/blog/", "\\.pdf$"],

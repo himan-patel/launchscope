@@ -48,6 +48,8 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
+ * @property {string | undefined} repo Absolute path of an app repository to read routes from.
+ * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
  * @property {StressSettings} stress
  */
 
@@ -118,6 +120,8 @@ const CONFIG_KEYS = new Set([
   'baseline',
   'traceContext',
   'openapi',
+  'repo',
+  'routeParams',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -153,6 +157,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
  * @property {string} [openapi]
+ * @property {string} [repo]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -229,6 +234,8 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),
     openapi: resolveOpenApi(cli.openapi ?? section.openapi, cwd),
+    repo: resolveRepo(cli.repo ?? section.repo, cwd),
+    routeParams: parseRouteParams(section.routeParams),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -593,4 +600,37 @@ function resolveOpenApi(value, cwd) {
   }
   if (value === 'auto' || /^https?:\/\//i.test(value)) return value;
   return resolve(cwd, value);
+}
+
+/**
+ * @param {unknown} value
+ * @param {string} cwd
+ * @returns {string | undefined}
+ */
+function resolveRepo(value, cwd) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new UsageError('--repo must be a path to the app repository.');
+  }
+  return resolve(cwd, value);
+}
+
+/**
+ * @param {unknown} value
+ * @returns {Record<string, string>}
+ */
+function parseRouteParams(value) {
+  if (value === undefined) return {};
+  if (typeof value !== 'object' || value === null || Array.isArray(value)) {
+    throw new UsageError('Config "perf.routeParams" must map parameter names to example values.');
+  }
+  /** @type {Record<string, string>} */
+  const params = {};
+  for (const [name, example] of Object.entries(value)) {
+    if (typeof example !== 'string' && typeof example !== 'number') {
+      throw new UsageError(`Route parameter "${name}" must be a string or number.`);
+    }
+    params[name] = String(example);
+  }
+  return params;
 }
