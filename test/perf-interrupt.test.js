@@ -9,7 +9,9 @@ import { startFixtureServer } from './fixtures/app-server.js';
 
 const BIN = fileURLToPath(new URL('../bin/launchscope.js', import.meta.url));
 
-describe('launchscope perf interruption', () => {
+// Windows cannot deliver SIGINT/SIGTERM to a child process (child.kill() terminates it), so the
+// graceful-stop path is exercised on macOS and Linux.
+describe('launchscope perf interruption', { skip: process.platform === 'win32' }, () => {
   /** @type {Awaited<ReturnType<typeof startFixtureServer>>} */
   let server;
   /** @type {string} */
@@ -49,7 +51,7 @@ describe('launchscope perf interruption', () => {
         ],
         {
           cwd: workdir,
-          env: { PATH: process.env.PATH ?? '', HOME: process.env.HOME ?? '', NO_COLOR: '1' },
+          env: { ...process.env, NO_COLOR: '1' },
         },
       );
       let stderr = '';

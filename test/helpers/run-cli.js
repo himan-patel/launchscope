@@ -18,16 +18,38 @@ export async function runCli(args, { cwd, env = {}, timeout = 120_000 } = {}) {
       cwd,
       timeout,
       maxBuffer: 20 * 1024 * 1024,
-      env: {
-        PATH: process.env.PATH ?? '',
-        HOME: process.env.HOME ?? '',
-        NO_COLOR: '1',
-        ...env,
-      },
+      env: { ...baseEnvironment(), NO_COLOR: '1', ...env },
     });
     return { code: 0, stdout, stderr };
   } catch (error) {
     const failure = /** @type {{ code: number, stdout: string, stderr: string }} */ (error);
     return { code: failure.code, stdout: failure.stdout, stderr: failure.stderr };
   }
+}
+
+/**
+ * A minimal environment for the child process: enough for Node and Playwright to find their
+ * binaries and browser cache on each platform, without leaking the developer's variables.
+ *
+ * @returns {Record<string, string>}
+ */
+function baseEnvironment() {
+  const names = [
+    'PATH',
+    'HOME',
+    'PLAYWRIGHT_BROWSERS_PATH',
+    // Windows: browser cache, profile, and system directories.
+    'LOCALAPPDATA',
+    'APPDATA',
+    'USERPROFILE',
+    'SystemRoot',
+    'SYSTEMROOT',
+    'TEMP',
+    'TMP',
+    'ComSpec',
+    'PATHEXT',
+  ];
+  return Object.fromEntries(
+    names.flatMap((name) => (process.env[name] === undefined ? [] : [[name, process.env[name]]])),
+  );
 }
