@@ -20,6 +20,11 @@ All notable changes to this project are documented here. The format follows
   the critical path, and stress replays, and iframe requests are counted per route. New findings:
   `websocket-failed` and `iframe-weight`.
 
+- `--baseline latest|<path>` (or `perf.baseline`) compares a run with an earlier one: per-route
+  and per-endpoint before/after for timings, sizes, and requests; new and removed routes and
+  endpoints; `regression` findings (10% and a per-metric minimum) that count toward `--fail-on`;
+  a "Compared with baseline" report section and Markdown table.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured

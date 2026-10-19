@@ -45,6 +45,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {boolean} json
  * @property {boolean} dryRun Resolve settings and create the run directory without a browser.
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
+ * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {StressSettings} stress
  */
 
@@ -112,6 +113,7 @@ const CONFIG_KEYS = new Set([
   'failOn',
   'stress',
   'budgets',
+  'baseline',
 ]);
 const STRESS_CONFIG_KEYS = new Set([
   'stages',
@@ -143,6 +145,7 @@ const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [failOn]
  * @property {boolean} [json]
  * @property {boolean} [dryRun]
+ * @property {string} [baseline]
  * @property {boolean} [stress]
  * @property {string} [stressStages]
  * @property {string} [stressDuration]
@@ -216,6 +219,7 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     json: cli.json ?? false,
     dryRun: cli.dryRun ?? false,
     budgets: resolveBudgets(section.budgets),
+    baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -495,4 +499,17 @@ function parseRatio(value, label) {
     throw new UsageError(`Config "${label}" must be a number greater than 0 and at most 1.`);
   }
   return value;
+}
+
+/**
+ * @param {unknown} value
+ * @param {string} cwd
+ * @returns {string | undefined} `latest`, or an absolute path.
+ */
+function resolveBaseline(value, cwd) {
+  if (value === undefined) return undefined;
+  if (typeof value !== 'string' || value.trim() === '') {
+    throw new UsageError('--baseline must be "latest" or a path to a previous run.');
+  }
+  return value === 'latest' ? 'latest' : resolve(cwd, value);
 }

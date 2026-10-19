@@ -149,6 +149,16 @@ launchscope perf http://localhost:3000 --stress --stress-stages 1,10,50,100 --st
 
 See [Stress testing](#stress-testing) for what this does and the safety rules.
 
+### Catch regressions against an earlier run
+
+```sh
+launchscope perf http://localhost:3000 --baseline latest            # newest earlier run for this host
+launchscope perf http://localhost:3000 --baseline ./main-branch-run/perf/summary.json
+launchscope perf http://localhost:3000 --baseline latest --fail-on warning   # fail CI on regressions
+```
+
+See [Comparing with a baseline](#comparing-with-a-baseline).
+
 ### Validate configuration without a browser
 
 ```sh
@@ -292,6 +302,32 @@ includes the numbers it is based on and a recommendation.
 | `static-cache`                                                                | info                       | same-origin scripts, styles, fonts, or images lack long-lived `Cache-Control`                                    |
 | `stress-knee`, `stress-saturation`, `stress-errors`, `stress-latency`         | see below                  | stress test results                                                                                              |
 
+## Comparing with a baseline
+
+`--baseline` compares this run with an earlier one and reports what got slower or heavier.
+
+- `--baseline latest` uses the newest earlier, completed run for the same host in the output
+  directory (interrupted runs are skipped). If there is none yet, the run continues with a warning.
+- `--baseline <path>` accepts a `summary.json` file, its `perf/` directory, or the run directory,
+  for example a run kept from the main branch.
+
+Routes are matched by path and query, and endpoints by method and path template (plus origin for
+third parties), so a baseline from staging can be compared with a run on localhost.
+
+| Compared  | Metrics (medians unless noted) | Minimum change    |
+| --------- | ------------------------------ | ----------------- |
+| Routes    | TTFB, FCP, LCP, TBT, load      | 50–100 ms         |
+| Routes    | CLS                            | 0.02              |
+| Routes    | transferred bytes, requests    | 10 KB, 5 requests |
+| Endpoints | p50, p95 duration              | 50 ms             |
+| Endpoints | decoded size                   | 10 KB             |
+
+A change counts only when it exceeds **10% and** the minimum above, so run-to-run noise on fast
+pages is ignored. Regressions become `regression` findings (critical when ≥ 50% and at least 3×
+the minimum) and count toward `--fail-on`. The report's "Compared with baseline" section and
+`summary.md` list every significant change, improvements included, plus new and removed routes
+and endpoints. The full comparison is in `summary.json` under `comparison`.
+
 ## Stress testing
 
 `--stress` runs after measurement and reuses what was learned:
@@ -395,6 +431,7 @@ with `--config`). CLI flags override it. Strings may reference environment varia
     "storageState": ".auth/session.json",
     "headers": { "Authorization": "Bearer ${STAGING_API_TOKEN}" },
     "failOn": "critical",
+    "baseline": "latest",
     "stress": {
       "stages": [1, 10, 25, 50],
       "duration": "15s",

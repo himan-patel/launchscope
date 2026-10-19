@@ -62,6 +62,10 @@ export function registerPerf(program, services) {
     .optionsGroup('Output:')
     .option('--json', 'print the summary as JSON to stdout')
     .option('--dry-run', 'validate options and config without opening a browser')
+    .option(
+      '--baseline <run>',
+      'compare with an earlier run: "latest" or a path to its summary.json',
+    )
     .addOption(
       new Option('--fail-on <level>', 'exit 1 if a bottleneck at this level is found').choices([
         'none',
