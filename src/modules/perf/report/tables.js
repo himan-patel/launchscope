@@ -129,7 +129,12 @@ export function endpointsCsv(endpoints) {
 export function stressCsv(stress) {
   const stages = toCsv(
     [
+      'mode',
+      'load',
       'concurrency',
+      'target_rate',
+      'achieved_rate',
+      'dropped',
       'duration_ms',
       'requests',
       'iterations',
@@ -145,7 +150,12 @@ export function stressCsv(stress) {
       'aborted',
     ],
     stress.stages.map((stage) => [
+      stage.mode,
+      stage.load,
       stage.concurrency,
+      stage.targetRate,
+      stage.achievedRate,
+      stage.dropped,
       stage.durationMs,
       stage.requests,
       stage.iterations,
@@ -162,10 +172,10 @@ export function stressCsv(stress) {
     ]),
   );
   const hops = toCsv(
-    ['concurrency', 'hop', 'kind', 'requests', 'errors', 'p50_ms', 'p95_ms', 'p99_ms'],
+    ['load', 'hop', 'kind', 'requests', 'errors', 'p50_ms', 'p95_ms', 'p99_ms'],
     stress.stages.flatMap((stage) =>
       stage.hops.map((hop) => [
-        stage.concurrency,
+        stage.load,
         hop.label,
         hop.kind,
         hop.requests,
@@ -310,11 +320,11 @@ export function summaryMarkdown(summary) {
       '',
       '## Stress test',
       '',
-      '| Users | Req/s | p50 | p95 | p99 | Errors |',
+      `| ${summary.stress.mode === 'open' ? 'Replays/s' : 'Users'} | Req/s | p50 | p95 | p99 | Errors |`,
       '| ---: | ---: | ---: | ---: | ---: | ---: |',
       ...stages.map(
         (stage) =>
-          `| ${stage.concurrency} | ${stage.requestsPerSecond.toFixed(1)} | ${dur(stage.latencyMs?.p50)} | ${dur(stage.latencyMs?.p95)} | ${dur(stage.latencyMs?.p99)} | ${(stage.errorRate * 100).toFixed(1)}% |`,
+          `| ${stage.load} | ${stage.requestsPerSecond.toFixed(1)} | ${dur(stage.latencyMs?.p50)} | ${dur(stage.latencyMs?.p95)} | ${dur(stage.latencyMs?.p99)} | ${(stage.errorRate * 100).toFixed(1)}% |`,
       ),
     );
     if (summary.stress.stoppedReason) lines.push('', `> ${md(summary.stress.stoppedReason)}`);

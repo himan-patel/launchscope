@@ -2,10 +2,14 @@ import { BRAND } from '../../../core/brand.js';
 import { summarize } from '../analyze/stats.js';
 
 /**
- * Closed-loop load generator: each virtual user repeatedly replays a route scenario (document,
- * then its API calls level by level) as fast as responses come back. Stages raise the number of
- * concurrent virtual users. Latency is measured client-side from request start to the last body
- * byte, so it includes the network and the server under load.
+ * Load generator with two models. Both replay route scenarios (document, then its API calls
+ * level by level) and measure latency client-side from request start to the last body byte.
+ *
+ * - **closed** (default): each stage runs N virtual users; each starts its next replay as soon as
+ *   the previous one finishes. A slower server automatically receives less load.
+ * - **open**: each stage starts replays at a fixed rate (per second) whether or not earlier ones
+ *   have finished, the way independent visitors arrive. When the server falls behind, work piles
+ *   up; replays beyond `maxInFlight` are dropped and counted, which shows true capacity.
  */
 
 const MIN_REQUESTS_BEFORE_ABORT = 20;
@@ -32,7 +36,12 @@ const COOL_DOWN_MS = 500;
 
 /**
  * @typedef {object} StageResult
- * @property {number} concurrency
+ * @property {'closed' | 'open'} mode
+ * @property {number} load Concurrent users (closed) or target replays per second (open).
+ * @property {number} concurrency Concurrent users (closed) or peak replays in flight (open).
+ * @property {number | null} targetRate Open mode: replays scheduled per second.
+ * @property {number} achievedRate Replays started per second.
+ * @property {number} dropped Open mode: replays not started because too many were in flight.
  * @property {number} durationMs Actual duration.
  * @property {number} iterations Completed route replays.
  * @property {number} requests
@@ -53,7 +62,8 @@ const COOL_DOWN_MS = 500;
 /**
  * @typedef {object} StressResult
  * @property {string} startedAt
- * @property {number[]} plannedStages
+ * @property {'closed' | 'open'} mode
+ * @property {number[]} plannedStages Users per stage (closed) or replays per second (open).
  * @property {StageResult[]} stages
  * @property {string | null} stoppedReason Why the run ended before the last stage.
  * @property {Array<{ slug: string, url: string, requestsPerIteration: number }>} scenarios
@@ -86,14 +96,15 @@ export async function runStress({
   const startedAt = new Date().toISOString();
   const userAgent = `${BRAND.command}/${BRAND.version} (stress test; +${BRAND.repositoryUrl})`;
 
-  for (const concurrency of settings.stages) {
+  const plannedStages = settings.mode === 'open' ? settings.rates : settings.stages;
+  for (const load of plannedStages) {
     if (signal?.aborted) {
       stoppedReason = 'Stopped by user.';
       break;
     }
     const stage = await runStage({
       scenarios,
-      concurrency,
+      load,
       settings,
       baseHeaders: { ...headers, 'user-agent': userAgent },
       cookieFor,
@@ -105,7 +116,7 @@ export async function runStress({
     if (stage.aborted) {
       stoppedReason = signal?.aborted
         ? 'Stopped by user.'
-        : `Error rate reached ${(stage.errorRate * 100).toFixed(1)}% at ${concurrency} concurrent users (limit ${(settings.maxErrorRate * 100).toFixed(0)}%).`;
+        : `Error rate reached ${(stage.errorRate * 100).toFixed(1)}% at ${describeLoad(stage)} (limit ${(settings.maxErrorRate * 100).toFixed(0)}%).`;
       break;
     }
     await new Promise((resolve) => setTimeout(resolve, COOL_DOWN_MS));
@@ -113,7 +124,8 @@ export async function runStress({
 
   return {
     startedAt,
-    plannedStages: [...settings.stages],
+    mode: settings.mode,
+    plannedStages: [...plannedStages],
     stages,
     stoppedReason,
     scenarios: scenarios.map((scenario) => ({
@@ -127,7 +139,7 @@ export async function runStress({
 /**
  * @param {object} options
  * @param {import('./scenario.js').Scenario[]} options.scenarios
- * @param {number} options.concurrency
+ * @param {number} options.load Users (closed) or replays per second (open).
  * @param {import('../settings.js').StressSettings} options.settings
  * @param {Record<string, string>} options.baseHeaders
  * @param {(url: string) => string | undefined} options.cookieFor
@@ -135,15 +147,7 @@ export async function runStress({
  * @param {typeof fetch} options.fetchImpl
  * @returns {Promise<StageResult>}
  */
-async function runStage({
-  scenarios,
-  concurrency,
-  settings,
-  baseHeaders,
-  cookieFor,
-  signal,
-  fetchImpl,
-}) {
+async function runStage({ scenarios, load, settings, baseHeaders, cookieFor, signal, fetchImpl }) {
   const started = performance.now();
   const deadline = started + settings.stageDurationMs;
   /** @type {number[]} */
@@ -162,6 +166,10 @@ async function runStage({
   let errors = 0;
   let bytesReceived = 0;
   let iterations = 0;
+  let startedIterations = 0;
+  let inFlight = 0;
+  let peakInFlight = 0;
+  let dropped = 0;
   let aborted = false;
   let nextScenario = 0;
 
@@ -223,11 +231,15 @@ async function runStage({
     }
   };
 
-  const virtualUser = async () => {
-    while (!aborted && !signal?.aborted && performance.now() < deadline) {
-      const scenario = scenarios[nextScenario % scenarios.length];
-      nextScenario += 1;
-      const begin = performance.now();
+  /** Replays the next scenario once, level by level. */
+  const replay = async () => {
+    const scenario = scenarios[nextScenario % scenarios.length];
+    nextScenario += 1;
+    startedIterations += 1;
+    inFlight += 1;
+    peakInFlight = Math.max(peakInFlight, inFlight);
+    const begin = performance.now();
+    try {
       for (const level of scenario.levels) {
         await Promise.all(level.map((request) => timedRequest(request)));
         if (aborted || signal?.aborted) return;
@@ -236,16 +248,49 @@ async function runStage({
       if (iterationTimes.length < MAX_SAMPLES_PER_STAGE) {
         iterationTimes.push(performance.now() - begin);
       }
+    } finally {
+      inFlight -= 1;
     }
   };
+  const stopped = () => aborted || Boolean(signal?.aborted);
 
-  await Promise.all(Array.from({ length: concurrency }, () => virtualUser()));
+  if (settings.mode === 'open') {
+    // Start replays on a fixed schedule (drift-corrected), independent of response times.
+    const intervalMs = 1000 / load;
+    /** @type {Set<Promise<void>>} */
+    const running = new Set();
+    for (let index = 0; !stopped(); index += 1) {
+      const due = started + index * intervalMs;
+      if (due >= deadline) break;
+      const wait = due - performance.now();
+      if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+      if (stopped()) break;
+      if (inFlight >= settings.maxInFlight) {
+        dropped += 1;
+        continue;
+      }
+      const task = replay().finally(() => running.delete(task));
+      running.add(task);
+    }
+    await Promise.all(running);
+  } else {
+    const virtualUser = async () => {
+      while (!stopped() && performance.now() < deadline) await replay();
+    };
+    await Promise.all(Array.from({ length: load }, () => virtualUser()));
+  }
   if (signal?.aborted) aborted = true;
 
   const durationMs = performance.now() - started;
   const seconds = durationMs / 1000;
+  const scheduledSeconds = Math.min(seconds, settings.stageDurationMs / 1000);
   return {
-    concurrency,
+    mode: settings.mode,
+    load,
+    concurrency: settings.mode === 'open' ? peakInFlight : load,
+    targetRate: settings.mode === 'open' ? load : null,
+    achievedRate: round(startedIterations / scheduledSeconds, 2),
+    dropped,
     durationMs: Math.round(durationMs),
     iterations,
     requests,
@@ -275,6 +320,14 @@ async function runStage({
       })),
     aborted,
   };
+}
+
+/**
+ * @param {Pick<StageResult, 'mode' | 'load'>} stage
+ * @returns {string} e.g. `25 concurrent users` or `10 replays/s`.
+ */
+export function describeLoad(stage) {
+  return stage.mode === 'open' ? `${stage.load} replays/s` : `${stage.load} concurrent users`;
 }
 
 /**

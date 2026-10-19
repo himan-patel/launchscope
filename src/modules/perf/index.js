@@ -76,7 +76,17 @@ export function registerPerf(program, services) {
     )
     .optionsGroup('Stress testing:')
     .option('--stress', 'stress test the measured routes after measuring them')
+    .addOption(
+      new Option(
+        '--stress-mode <mode>',
+        'closed: users wait for responses; open: fixed arrival rate (default: closed)',
+      ).choices(['closed', 'open']),
+    )
     .option('--stress-stages <list>', 'concurrent users per stage (default: 1,5,10,25,50)')
+    .option(
+      '--stress-rates <list>',
+      'open mode: route replays started per second, per stage (default: 1,5,10,25,50)',
+    )
     .option('--stress-duration <duration>', 'duration of each stage (default: 10s)')
     .option('--stress-timeout <duration>', 'per-request timeout under stress (default: 10s)')
     .option('--stress-include-assets', 'also replay same-origin scripts, styles, and images')

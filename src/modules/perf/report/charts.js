@@ -125,21 +125,22 @@ export function bytesByTypeChart(routes) {
 export function stressCharts(stress) {
   const stages = stress.stages.filter((stage) => stage.requests > 0);
   if (stages.length === 0) return null;
-  const xLabels = stages.map((stage) => String(stage.concurrency));
+  const xLabels = stages.map((stage) => String(stage.load ?? stage.concurrency));
+  const xTitle = stress.mode === 'open' ? 'replays per second' : 'concurrent users';
   const latency = lineChart({
     xLabels,
-    xTitle: 'concurrent users',
+    xTitle,
     series: [
       { key: 'p50', label: 'p50', cls: 's1', values: stages.map((s) => s.latencyMs?.p50 ?? null) },
       { key: 'p95', label: 'p95', cls: 's2', values: stages.map((s) => s.latencyMs?.p95 ?? null) },
       { key: 'p99', label: 'p99', cls: 's3', values: stages.map((s) => s.latencyMs?.p99 ?? null) },
     ],
     format: formatMs,
-    title: 'Request latency by concurrency',
+    title: `Request latency by ${stress.mode === 'open' ? 'arrival rate' : 'concurrency'}`,
   });
   const throughput = lineChart({
     xLabels,
-    xTitle: 'concurrent users',
+    xTitle,
     series: [
       {
         key: 'rps',
@@ -149,12 +150,12 @@ export function stressCharts(stress) {
       },
     ],
     format: (value) => `${Math.round(value)}/s`,
-    title: 'Throughput (requests per second) by concurrency',
+    title: `Throughput (requests per second) by ${stress.mode === 'open' ? 'arrival rate' : 'concurrency'}`,
   });
   const errors = stages.some((stage) => stage.errors > 0)
     ? lineChart({
         xLabels,
-        xTitle: 'concurrent users',
+        xTitle,
         series: [
           {
             key: 'errors',
@@ -164,7 +165,7 @@ export function stressCharts(stress) {
           },
         ],
         format: (value) => `${Math.round(value * 10) / 10}%`,
-        title: 'Error rate by concurrency',
+        title: `Error rate by ${stress.mode === 'open' ? 'arrival rate' : 'concurrency'}`,
       })
     : null;
   return { latency, throughput, errors };

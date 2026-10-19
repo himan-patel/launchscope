@@ -299,6 +299,9 @@ describe('runStress', () => {
     includeAssets: false,
     allowRemote: false,
     maxErrorRate: 0.5,
+    mode: 'closed',
+    rates: [1],
+    maxInFlight: 1000,
   };
 
   it('runs every stage and records per-stage and per-hop latency that grows with load', async () => {
@@ -376,6 +379,79 @@ describe('runStress', () => {
   });
 });
 
+describe('runStress in open (arrival-rate) mode', () => {
+  /** Server that handles 2 requests at a time, 100 ms each: capacity ~20 requests per second. */
+  const bottleneck = () => {
+    let active = 0;
+    /** @type {Array<() => void>} */
+    const queue = [];
+    /** @type {typeof fetch} */
+    const fetchImpl = async () => {
+      await new Promise((resolve) => {
+        if (active < 2) {
+          active += 1;
+          resolve(undefined);
+        } else {
+          queue.push(() => {
+            active += 1;
+            resolve(undefined);
+          });
+        }
+      });
+      await new Promise((resolve) => setTimeout(resolve, 100));
+      active -= 1;
+      queue.shift()?.();
+      return new Response('ok');
+    };
+    return fetchImpl;
+  };
+  /** @type {import('./scenario.js').Scenario[]} */
+  const scenarios = [
+    {
+      slug: 'x',
+      url: 'https://app.test/x',
+      levels: [[{ url: 'https://app.test/x', label: 'GET /x', kind: 'api' }]],
+    },
+  ];
+
+  it('starts replays on schedule, tracks peak in-flight work, and drops beyond the cap', async () => {
+    const result = await runStress({
+      scenarios,
+      settings: {
+        enabled: true,
+        stages: [1],
+        stageDurationMs: 1000,
+        requestTimeoutMs: 5000,
+        includeAssets: false,
+        allowRemote: false,
+        maxErrorRate: 0.5,
+        mode: 'open',
+        rates: [5, 60],
+        maxInFlight: 8,
+      },
+      headers: {},
+      cookieFor: () => undefined,
+      fetchImpl: bottleneck(),
+    });
+    assert.equal(result.mode, 'open');
+    assert.deepEqual(result.plannedStages, [5, 60]);
+    const [slow, fast] = result.stages;
+    assert.equal(slow.targetRate, 5);
+    assert.ok(Math.abs(slow.achievedRate - 5) <= 1, `achieved ${slow.achievedRate}`);
+    assert.equal(slow.dropped, 0);
+    assert.ok(slow.concurrency <= 2, `peak in flight ${slow.concurrency}`);
+    assert.equal(fast.concurrency, 8, 'work piles up to the in-flight cap');
+    assert.ok(fast.dropped > 10, `dropped ${fast.dropped}`);
+
+    const { insights, findings } = analyzeStress(result, resolveBudgets(undefined));
+    assert.deepEqual(insights.saturation?.concurrency, 60);
+    assert.match(
+      findings.find((finding) => finding.rule === 'stress-saturation')?.title ?? '',
+      /falls behind at 60 replays\/s/,
+    );
+  });
+});
+
 describe('analyzeStress', () => {
   const budgets = resolveBudgets(undefined);
 
@@ -387,6 +463,11 @@ describe('analyzeStress', () => {
    * @returns {import('./runner.js').StageResult}
    */
   const stage = (concurrency, rps, latencies, { errors = 0, hopLatencies = {} } = {}) => ({
+    mode: /** @type {const} */ ('closed'),
+    load: concurrency,
+    targetRate: null,
+    achievedRate: rps / 2,
+    dropped: 0,
     concurrency,
     durationMs: 10_000,
     iterations: rps * 5,
@@ -414,6 +495,7 @@ describe('analyzeStress', () => {
   /** @param {import('./runner.js').StageResult[]} stages @param {string | null} [stoppedReason] */
   const result = (stages, stoppedReason = null) => ({
     startedAt: '2026-10-19T00:00:00.000Z',
+    mode: /** @type {const} */ ('closed'),
     plannedStages: stages.map((s) => s.concurrency),
     stages,
     stoppedReason,

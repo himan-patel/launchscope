@@ -1,12 +1,16 @@
 import { formatDuration } from '../../../core/duration.js';
 import { classify } from '../analyze/budgets.js';
+import { describeLoad } from './runner.js';
 
 /**
  * Reads a stress run like a capacity test:
  * - **knee**: the first stage where p95 latency at least doubles versus the first stage (and
  *   grows by 50 ms or more). The hop whose p95 grew the most at that stage is the likely
  *   bottleneck under load.
- * - **saturation**: the first stage where concurrency rose by 1.5× or more but throughput grew
+ * Stage "load" is concurrent users in closed mode and replays per second in open mode; insight
+ * fields named `concurrency` hold that load.
+ *
+ * - **saturation** (closed): the first stage where concurrency rose by 1.5× or more but throughput grew
  *   by less than 10%; adding users only adds queueing from there.
  * - **breaking point**: the first stage whose error rate crosses the warning budget.
  */
@@ -48,7 +52,7 @@ export function analyzeStress(result, budgets) {
     stage.requestsPerSecond > best.requestsPerSecond ? stage : best,
   );
   insights.peakRequestsPerSecond = peak.requestsPerSecond;
-  insights.peakAtConcurrency = peak.concurrency;
+  insights.peakAtConcurrency = peak.load;
 
   const baseline = stages[0];
   const baselineP95 = baseline.latencyMs?.p95;
@@ -58,7 +62,7 @@ export function analyzeStress(result, budgets) {
       if (p95 === undefined) continue;
       if (p95 >= baselineP95 * KNEE_RATIO && p95 - baselineP95 >= KNEE_MIN_GROWTH_MS) {
         insights.knee = {
-          concurrency: stage.concurrency,
+          concurrency: stage.load,
           p95Ms: p95,
           baselineP95Ms: baselineP95,
           hop: worstHop(baseline, stage),
@@ -68,26 +72,41 @@ export function analyzeStress(result, budgets) {
     }
   }
 
-  for (let index = 1; index < stages.length; index += 1) {
-    const previous = stages[index - 1];
-    const current = stages[index];
-    const concurrencyRatio = current.concurrency / previous.concurrency;
-    const gain =
-      previous.requestsPerSecond > 0
-        ? (current.requestsPerSecond - previous.requestsPerSecond) / previous.requestsPerSecond
-        : 1;
-    if (concurrencyRatio >= SATURATION_CONCURRENCY_RATIO && gain < SATURATION_MAX_GAIN) {
+  if (result.mode === 'open') {
+    // Open model: capacity is reached when replays are dropped or start late.
+    const saturated = stages.find(
+      (stage) =>
+        stage.dropped > 0 ||
+        (stage.targetRate !== null && stage.achievedRate < stage.targetRate * 0.9),
+    );
+    if (saturated) {
       insights.saturation = {
-        concurrency: previous.concurrency,
-        requestsPerSecond: previous.requestsPerSecond,
+        concurrency: saturated.load,
+        requestsPerSecond: saturated.requestsPerSecond,
       };
-      break;
+    }
+  } else {
+    for (let index = 1; index < stages.length; index += 1) {
+      const previous = stages[index - 1];
+      const current = stages[index];
+      const concurrencyRatio = current.load / previous.load;
+      const gain =
+        previous.requestsPerSecond > 0
+          ? (current.requestsPerSecond - previous.requestsPerSecond) / previous.requestsPerSecond
+          : 1;
+      if (concurrencyRatio >= SATURATION_CONCURRENCY_RATIO && gain < SATURATION_MAX_GAIN) {
+        insights.saturation = {
+          concurrency: previous.load,
+          requestsPerSecond: previous.requestsPerSecond,
+        };
+        break;
+      }
     }
   }
 
   const breaking = stages.find((stage) => stage.errorRate >= budgets.stressErrorRate.warning);
   if (breaking) {
-    insights.breakingPoint = { concurrency: breaking.concurrency, errorRate: breaking.errorRate };
+    insights.breakingPoint = { concurrency: breaking.load, errorRate: breaking.errorRate };
   }
 
   const subject = {};
@@ -103,13 +122,13 @@ export function analyzeStress(result, budgets) {
       rule: 'stress-errors',
       severity: errorSeverity,
       category: 'stress',
-      title: `Errors under load: ${(worstErrorStage.errorRate * 100).toFixed(1)}% at ${worstErrorStage.concurrency} concurrent users`,
+      title: `Errors under load: ${(worstErrorStage.errorRate * 100).toFixed(1)}% at ${describeLoad(worstErrorStage)}`,
       detail: `${worstErrorStage.errors} of ${worstErrorStage.requests} requests failed. ${worstErrorStage.errorSamples.slice(0, 3).join(' | ')}${result.stoppedReason ? ` ${result.stoppedReason}` : ''}`,
       recommendation:
         'Find the failing hop in the per-hop table; check connection pools, rate limits, timeouts, and server logs at this concurrency.',
       subject,
       evidence: {
-        concurrency: worstErrorStage.concurrency,
+        concurrency: worstErrorStage.load,
         errorRate: worstErrorStage.errorRate,
         errors: worstErrorStage.errors,
       },
@@ -126,12 +145,12 @@ export function analyzeStress(result, budgets) {
       rule: 'stress-latency',
       severity: latencySeverity,
       category: 'stress',
-      title: `p95 latency reaches ${formatDuration(lastP95)} at ${lastStage.concurrency} concurrent users`,
-      detail: `Up from ${formatDuration(baselineP95 ?? 0)} with ${baseline.concurrency} user(s).`,
+      title: `p95 latency reaches ${formatDuration(lastP95)} at ${describeLoad(lastStage)}`,
+      detail: `Up from ${formatDuration(baselineP95 ?? 0)} at ${describeLoad(baseline)}.`,
       recommendation:
         'Profile the slowest hop under load; add caching, scale the bottleneck tier, or reduce work per request.',
       subject,
-      evidence: { concurrency: lastStage.concurrency, p95Ms: lastP95 },
+      evidence: { concurrency: lastStage.load, p95Ms: lastP95 },
       impact: lastP95,
     });
   }
@@ -143,7 +162,7 @@ export function analyzeStress(result, budgets) {
       rule: 'stress-knee',
       severity: 'warning',
       category: 'stress',
-      title: `Latency ${Math.round((knee.p95Ms / knee.baselineP95Ms) * 10) / 10}× higher at ${knee.concurrency} concurrent users${knee.hop ? `; ${knee.hop.label} degrades most` : ''}`,
+      title: `Latency ${Math.round((knee.p95Ms / knee.baselineP95Ms) * 10) / 10}× higher at ${describeLoad({ mode: result.mode, load: knee.concurrency })}${knee.hop ? `; ${knee.hop.label} degrades most` : ''}`,
       detail: `p95 went from ${formatDuration(knee.baselineP95Ms)} to ${formatDuration(knee.p95Ms)}.${knee.hop ? ` ${knee.hop.label}: p95 ${formatDuration(knee.hop.baselineP95Ms)} → ${formatDuration(knee.hop.p95Ms)}.` : ''}`,
       recommendation: knee.hop
         ? `Investigate ${knee.hop.label} first: look for limited worker or connection pools, locks, or queries that serialize under concurrency.`
@@ -164,8 +183,14 @@ export function analyzeStress(result, budgets) {
       rule: 'stress-saturation',
       severity: 'info',
       category: 'stress',
-      title: `Throughput plateaus around ${insights.saturation.requestsPerSecond} req/s from ${insights.saturation.concurrency} concurrent users`,
-      detail: 'Adding users beyond this point increases latency instead of throughput.',
+      title:
+        result.mode === 'open'
+          ? `The server falls behind at ${describeLoad({ mode: 'open', load: insights.saturation.concurrency })} (${insights.saturation.requestsPerSecond} req/s)`
+          : `Throughput plateaus around ${insights.saturation.requestsPerSecond} req/s from ${describeLoad({ mode: 'closed', load: insights.saturation.concurrency })}`,
+      detail:
+        result.mode === 'open'
+          ? 'At this arrival rate replays were dropped or started late because earlier ones had not finished.'
+          : 'Adding users beyond this point increases latency instead of throughput.',
       recommendation:
         'Treat this as current capacity; scale out or remove the bottleneck before expecting more traffic.',
       subject,

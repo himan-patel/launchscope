@@ -52,6 +52,11 @@ All notable changes to this project are documented here. The format follows
   `browsers.json`; adds `browser-failed`, `browser-errors`, and `browser-slower` findings.
   Missing browsers are skipped with a warning.
 
+- Open-model stress testing: `--stress-mode open --stress-rates 2,5,10` starts route replays at a
+  fixed arrival rate regardless of response times, tracks peak work in flight, achieved rate, and
+  replays dropped beyond `stress.maxInFlight`, and reports when the server falls behind. Charts,
+  tables, CSVs, and findings label stages as users or replays per second.
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
@@ -60,6 +65,8 @@ All notable changes to this project are documented here. The format follows
   `measure-routes.js`, `stress-phase.js`, and `console-output.js`.
 - JSON payload shapes are summarized on every cold run (not only the first), so collection sizes
   reflect all measured loads.
+- `stress/stages.csv` gains `mode`, `load`, `target_rate`, `achieved_rate`, and `dropped` columns;
+  `stress/hops.csv` uses `load` instead of `concurrency`.
 - Waterfalls show up to 150 requests (was 60) and say how many were left out; every request is
   always in `trace.json`.
 
