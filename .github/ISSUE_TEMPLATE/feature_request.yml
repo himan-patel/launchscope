@@ -1,0 +1,36 @@
+name: Feature request
+description: Suggest a new check, option, or improvement.
+labels: [enhancement]
+body:
+  - type: dropdown
+    id: area
+    attributes:
+      label: Area
+      options:
+        - Performance (perf)
+        - SEO & sharing (seo)
+        - Security (security)
+        - Accessibility (a11y)
+        - Privacy & compliance (compliance)
+        - Domain & email (domain)
+        - Reports & output
+        - CLI & configuration
+        - Something new
+    validations:
+      required: true
+  - type: textarea
+    id: problem
+    attributes:
+      label: What problem would this solve?
+      description: Describe the launch issue you want caught, ideally with a real example.
+    validations:
+      required: true
+  - type: textarea
+    id: proposal
+    attributes:
+      label: Proposed behavior
+      description: What should LaunchScope check, and how should it report the result?
+  - type: textarea
+    id: alternatives
+    attributes:
+      label: Alternatives you have considered
