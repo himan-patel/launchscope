@@ -11,17 +11,66 @@ bin/launchscope.js        Executable entry point. Wires real process streams int
 src/
 ├── cli.js                Command tree, global options, error-to-exit-code mapping.
 ├── runtime.js            Resolves global options + config into a Runtime for a command.
+├── commands/
+│   └── login.js          `launchscope login`: save a browser session for any module.
 ├── core/                 Shared building blocks with no knowledge of specific modules.
 │   ├── brand.js          Product name, command, version, links.
 │   ├── config.js         Loads launchscope.config.json, resolves ${ENV} references.
+│   ├── duration.js       Duration parsing and ms/bytes formatting.
 │   ├── errors.js         Exit codes and user-facing error types.
 │   ├── logger.js         stderr logger with levels and NO_COLOR/FORCE_COLOR support.
 │   ├── report-dir.js     Timestamped run directories and atomic JSON writes.
 │   └── target.js         Target URL parsing and loopback/private/public host scope.
 └── modules/
-    └── registry.js       Every check module, shipped or planned (doubles as the roadmap).
-test/                     End-to-end tests that run the real CLI binary.
+    ├── registry.js       Every check module, shipped or planned (doubles as the roadmap).
+    └── perf/             The performance module (see below).
+test/                     End-to-end tests that run the real CLI binary against a fixture app.
 ```
+
+## The `perf` module
+
+```text
+src/modules/perf/
+├── index.js              Registers `launchscope perf <target>` and its options.
+├── settings.js           CLI > config > defaults, validated at the trust boundary.
+├── run.js                Orchestrates discovery → measurement → analysis → stress → report.
+├── measure.js            Cold and warm runs of one route, each in a fresh browser context.
+├── discover/routes.js    Breadth-first route queue, sitemap reader, URL filtering.
+├── capture/
+│   ├── browser.js        Chromium launch, device/throttle presets, origin-scoped headers, HAR.
+│   ├── page-capture.js   One page load: navigation, network idle, vitals, links, screenshot.
+│   ├── network-recorder.js  CDP events → request records (phases, sizes, initiators, redirects).
+│   └── vitals.js         In-page Web Vitals observer (LCP, CLS, TBT, FCP, TTFB).
+├── trace/
+│   ├── hop-tree.js       Request tree, inferred API chains, critical path, text rendering.
+│   └── server-timing.js  W3C Server-Timing parser.
+├── analyze/
+│   ├── stats.js          Percentile distributions.
+│   ├── routes.js         Per-route summaries.
+│   ├── endpoints.js      Per-endpoint aggregation with path templates.
+│   ├── budgets.js        Default thresholds, config overrides, classification.
+│   ├── bottlenecks.js    Rules that turn measurements into ranked findings.
+│   └── index.js          Glue: routes + endpoints + findings + totals.
+├── stress/
+│   ├── safety.js         DNS-verified loopback/private target check.
+│   ├── scenario.js       Route replay plans from traces; storage-state cookie jar.
+│   ├── runner.js         Closed-loop virtual users, stages, circuit breaker.
+│   └── analyze.js        Knee, saturation, breaking point, stress findings.
+└── report/
+    ├── write-report.js   Writes HTML, Markdown, CSV, and SVG files.
+    ├── html.js           Self-contained HTML report.
+    ├── charts.js · svg.js  Chart specs and dependency-free SVG rendering.
+    ├── tables.js         CSV exports and Markdown summary.
+    ├── har.js            HAR redaction.
+    ├── escape.js         HTML and CSV escaping.
+    └── paths.js          Route folder names.
+```
+
+Data flows one way: capture produces `PageLoad` records, tracing turns the representative load
+into a `Trace`, analysis turns loads and traces into route summaries, endpoint statistics, and
+findings, and the report layer only reads those results. Each layer is unit tested on its own,
+and `test/perf-*.test.js` run the whole pipeline in real Chromium against
+`test/fixtures/app-server.js`, a small app with deliberate problems.
 
 Unit tests sit next to the code they cover (`*.test.js`) and run with the built-in `node:test`
 runner.

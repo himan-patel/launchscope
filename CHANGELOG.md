@@ -6,8 +6,16 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.2.0] - 2026-10-19
+
+First release with a working check module: performance.
+
 ### Added
 
+- Documentation: a full performance guide (`docs/perf.md`) covering install, recipes, every
+  option, the configuration file, budgets, the report layout, bottleneck rules, stress-test
+  safety, CI usage, measurement limits, and troubleshooting; an example config and GitHub
+  Actions workflow in `examples/`; README and architecture updates.
 - `launchscope perf <target>` command with route, measurement, authentication, stress, and output
   options; settings merge CLI flags, the `perf` config section, and defaults with strict
   validation (unknown config keys are rejected). `--dry-run` validates without a browser.
@@ -71,3 +79,10 @@ All notable changes to this project are documented here. The format follows
 - Tooling: `node:test` suite, ESLint, Prettier, TypeScript type-checking of JSDoc, GitHub Actions
   CI on Node 22 and 24, and Dependabot.
 - Project docs: README, architecture overview, contributing guide, and security policy.
+
+### Fixed
+
+- `--storage-state` help text and the missing-session hint now point to `launchscope login`.
+
+[Unreleased]: https://github.com/himan-patel/launchscope/compare/v0.2.0...HEAD
+[0.2.0]: https://github.com/himan-patel/launchscope/releases/tag/v0.2.0

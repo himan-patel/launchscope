@@ -109,7 +109,7 @@ async function assertReadable(path) {
     await access(path);
   } catch (error) {
     throw new UsageError(`Storage state file ${path} does not exist or is not readable.`, {
-      hint: 'Create one with "launchscope perf login <url> --save <file>".',
+      hint: 'Create one with "launchscope login <url> --save <file>".',
       cause: error,
     });
   }

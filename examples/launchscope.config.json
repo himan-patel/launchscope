@@ -1,0 +1,31 @@
+{
+  "outputDir": "launchscope-reports",
+  "perf": {
+    "routes": ["/", "/pricing", "/app/dashboard"],
+    "maxRoutes": 25,
+    "depth": 1,
+    "sitemap": true,
+    "exclude": ["/blog/", "\\.pdf$"],
+    "runs": 5,
+    "warmRuns": 1,
+    "device": "desktop",
+    "throttle": "none",
+    "timeout": "45s",
+    "storageState": ".auth/session.json",
+    "headers": { "Authorization": "Bearer ${STAGING_API_TOKEN}" },
+    "failOn": "critical",
+    "stress": {
+      "stages": [1, 10, 25, 50],
+      "duration": "15s",
+      "timeout": "10s",
+      "includeAssets": false,
+      "allowRemote": false,
+      "maxErrorRate": 0.25
+    },
+    "budgets": {
+      "lcpMs": { "warning": 2000, "critical": 3500 },
+      "apiP95Ms": 400,
+      "chainLength": 2
+    }
+  }
+}

@@ -50,7 +50,7 @@ export function registerPerf(program, services) {
     .option('--browser-channel <name>', 'use an installed browser, e.g. chrome or msedge')
     .option('--headed', 'show the browser window while measuring')
     .optionsGroup('Authentication:')
-    .option('--storage-state <file>', 'saved login session (see "launchscope perf login")')
+    .option('--storage-state <file>', 'saved login session (see "launchscope login")')
     .option('-H, --header <header>', 'extra "Name: value" header for the target origin', collect)
     .optionsGroup('Stress testing:')
     .option('--stress', 'stress test the measured routes after measuring them')
