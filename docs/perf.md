@@ -6,6 +6,7 @@ optionally stress tests the routes. It ends with a report directory you can open
 into CI.
 
 - [Install](#install)
+- [Node.js version](#nodejs-version)
 - [Quick start](#quick-start)
 - [Recipes](#recipes)
 - [How a run works](#how-a-run-works)
@@ -23,7 +24,7 @@ into CI.
 
 ## Install
 
-Requirements: **Node.js 22.12 or newer**.
+Requirements: **Node.js 22.19 or newer** (see [Node.js version](#nodejs-version)).
 
 ```sh
 git clone https://github.com/himan-patel/launchscope.git
@@ -39,8 +40,26 @@ Already have Chrome or Edge installed? Skip the last step and pass `--browser-ch
 Check the install:
 
 ```sh
-launchscope --version
+launchscope doctor          # launches each browser, loads Lighthouse, checks the output folder
 launchscope perf --help
+```
+
+## Node.js version
+
+LaunchScope needs **Node.js 22.19 or newer**; the project pins **22.23.3** (LTS) in `.nvmrc` and
+`.node-version`, and npm refuses to install on an unsupported version (`engine-strict`).
+
+| OS            | Version manager                                           | Command in the project folder                                                    |
+| ------------- | --------------------------------------------------------- | -------------------------------------------------------------------------------- |
+| macOS / Linux | [nvm](https://github.com/nvm-sh/nvm)                      | `nvm install && nvm use` (reads `.nvmrc`)                                        |
+| Windows       | [nvm-windows](https://github.com/coreybutler/nvm-windows) | `nvm install 22.23.3` then `nvm use 22.23.3` (it does not read `.nvmrc`)         |
+| Any OS        | [fnm](https://github.com/Schniz/fnm)                      | `fnm install && fnm use` (reads `.node-version` / `.nvmrc`; works in PowerShell) |
+| Any OS        | [Volta](https://volta.sh)                                 | `volta install node@22.23.3`                                                     |
+
+Then check everything (Node.js, browsers, Lighthouse, output directory) with:
+
+```sh
+launchscope doctor
 ```
 
 ## Quick start
@@ -220,7 +239,7 @@ is not installed is skipped with a warning.
 ### Add Lighthouse scores
 
 ```sh
-npm install lighthouse          # optional peer dependency; needs Node.js 22.19+
+npm install lighthouse          # optional peer dependency
 launchscope perf http://localhost:3000 --lighthouse
 ```
 

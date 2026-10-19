@@ -13,7 +13,7 @@
 <p align="center">
   <a href="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml"><img src="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
-  <img src="https://img.shields.io/badge/node-%3E%3D22.12-339933.svg" alt="Node.js 22.12 or newer">
+  <img src="https://img.shields.io/badge/node-%3E%3D22.19-339933.svg" alt="Node.js 22.19 or newer">
   <img src="https://img.shields.io/badge/version-0.3.0-4f46e5.svg" alt="Version 0.3.0">
 </p>
 
@@ -69,14 +69,18 @@ Bottlenecks · 1 critical, 3 warning, 2 info
 
 ## Quick start
 
-Requires Node.js 22.12 or newer.
+Requires Node.js 22.19 or newer (the repo pins 22.23.3 in `.nvmrc`; see
+[Node.js version](docs/perf.md#nodejs-version) for nvm, nvm-windows, fnm, and Volta).
+Run `launchscope doctor` to verify your setup.
 
 ```sh
 git clone https://github.com/himan-patel/launchscope.git
 cd launchscope
+nvm install && nvm use            # Node.js 22.23.3 from .nvmrc (Windows: see below)
 npm ci
 npm link                          # makes `launchscope` available everywhere
 npx playwright install chromium   # or use --browser-channel chrome with an installed Chrome
+launchscope doctor                # verifies Node.js, browsers, Lighthouse, and the output folder
 ```
 
 Then, with your app running:

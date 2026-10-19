@@ -33,7 +33,7 @@
     "!src/**/*.test.js"
   ],
   "engines": {
-    "node": ">=22.12.0"
+    "node": ">=22.19.0"
   },
   "scripts": {
     "start": "node bin/launchscope.js",

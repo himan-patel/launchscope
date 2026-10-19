@@ -6,6 +6,18 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `launchscope doctor`: verifies the environment by launching Chromium, Firefox, and WebKit,
+  loading Lighthouse (and checking its Node.js requirement), and writing to the output directory;
+  works the same on macOS, Linux, and Windows.
+
+### Changed
+
+- Node.js is pinned to 22.23.3 (LTS) in `.nvmrc` and `.node-version` (for fnm and Volta), npm
+  refuses unsupported versions (`engine-strict`), and the minimum is now 22.19 so Lighthouse
+  works on every supported Node.js. CI uses the pinned version and runs `doctor`.
+
 ## [0.3.0] - 2026-10-19
 
 Production-ready performance module: every gap from the 0.2.0 review is closed.

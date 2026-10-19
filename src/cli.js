@@ -1,4 +1,5 @@
 import { Command, CommanderError } from 'commander';
+import { registerDoctor } from './commands/doctor.js';
 import { registerLogin } from './commands/login.js';
 import { BRAND } from './core/brand.js';
 import { ExitCode, LaunchScopeError } from './core/errors.js';
@@ -72,6 +73,7 @@ export function createProgram(io) {
     });
 
   registerLogin(program, services);
+  registerDoctor(program, services);
 
   for (const checkModule of CHECK_MODULES) {
     checkModule.register?.(program, services);
