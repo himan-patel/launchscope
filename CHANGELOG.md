@@ -62,6 +62,10 @@ All notable changes to this project are documented here. The format follows
   measurement (held in memory, never written to disk), with a console warning listing them.
   DELETE is never replayed; everything else stays GET-only.
 
+- k6 export: `--export-k6` writes `stress/k6-script.js` from the measured scenarios (GET requests
+  in dependency levels via `http.batch`, closed/open executors and stages, budget thresholds,
+  header values from environment variables, no request bodies).
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
