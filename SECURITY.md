@@ -31,7 +31,9 @@ issue is resolved. Please give us a reasonable chance to release a fix before di
 In scope:
 
 - Leaking credentials, cookies, tokens, or response bodies into reports, logs, or terminal output
-- Bypassing the safeguards that limit stress testing to targets the user controls
+- Bypassing the safeguards that limit stress testing to targets the user controls, or replaying
+  writes that were not allowlisted with `--stress-replay`
+- Sending `--header` values or `traceparent` headers to origins other than the target
 - Code execution or file writes outside the configured report directory
 - Vulnerabilities in LaunchScope's own dependencies that affect its users
 

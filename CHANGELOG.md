@@ -6,6 +6,10 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+## [0.3.0] - 2026-10-19
+
+Production-ready performance module: every gap from the 0.2.0 review is closed.
+
 ### Added
 
 - Graceful interruption for `perf`: Ctrl+C or SIGTERM during measurement or stress testing
@@ -175,5 +179,6 @@ First release with a working check module: performance.
 
 - `--storage-state` help text and the missing-session hint now point to `launchscope login`.
 
-[Unreleased]: https://github.com/himan-patel/launchscope/compare/v0.2.0...HEAD
+[Unreleased]: https://github.com/himan-patel/launchscope/compare/v0.3.0...HEAD
+[0.3.0]: https://github.com/himan-patel/launchscope/compare/v0.2.0...v0.3.0
 [0.2.0]: https://github.com/himan-patel/launchscope/releases/tag/v0.2.0
