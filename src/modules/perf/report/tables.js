@@ -279,6 +279,22 @@ export function summaryMarkdown(summary) {
       }),
     );
   }
+  if (summary.lighthouse && summary.lighthouse.length > 0) {
+    /** @type {import('../lighthouse-phase.js').LighthouseRouteResult[]} */
+    const results = summary.lighthouse;
+    lines.push(
+      '',
+      '## Lighthouse',
+      '',
+      '| Route | Score | LCP | TBT | CLS |',
+      '| --- | ---: | ---: | ---: | ---: |',
+      ...results.map((result) =>
+        result.error
+          ? `| ${md(routeLabel(result.url))} | failed | – | – | – |`
+          : `| ${md(routeLabel(result.url))} | ${result.score === null ? '–' : Math.round(result.score * 100)} | ${dur(result.metrics.lcpMs ?? undefined)} | ${dur(result.metrics.tbtMs ?? undefined)} | ${result.metrics.cls === null || result.metrics.cls === undefined ? '–' : result.metrics.cls.toFixed(3)} |`,
+      ),
+    );
+  }
   if (summary.comparison) {
     /** @type {import('../analyze/compare.js').Comparison} */
     const comparison = summary.comparison;

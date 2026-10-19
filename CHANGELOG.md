@@ -66,6 +66,11 @@ All notable changes to this project are documented here. The format follows
   in dependency levels via `http.batch`, closed/open executors and stages, budget thresholds,
   header values from environment variables, no request bodies).
 
+- Optional Lighthouse audits: `--lighthouse` runs Google Lighthouse once per measured route
+  (mobile or desktop preset) against Playwright's Chromium, saves each HTML report, adds a report
+  section, and raises `lighthouse-score` findings (budget `lighthouseScore`, lower is worse).
+  Lighthouse is an optional peer dependency (`npm install lighthouse`, Node.js 22.19+).
+
 ### Changed
 
 - Bounded memory for large runs: each route is folded into the analysis as soon as it is measured
