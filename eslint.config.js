@@ -22,4 +22,11 @@ export default [
       'prefer-const': 'error',
     },
   },
+  {
+    // Functions here are serialized and evaluated inside the page by Playwright.
+    files: ['src/modules/perf/capture/**/*.js'],
+    languageOptions: {
+      globals: { ...globals.node, ...globals.browser },
+    },
+  },
 ];
