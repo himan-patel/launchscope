@@ -47,6 +47,14 @@ All notable changes to this project are documented here. The format follows
   or private addresses unless `--allow-remote` is passed, only GET requests are sent, a circuit
   breaker stops the run when errors exceed `stress.maxErrorRate`, Ctrl+C stops gracefully, and
   requests carry an identifying User-Agent. Results in `stress/stress.json`.
+- Report directory for `perf`: a self-contained `index.html` (works offline; light and dark
+  themes; responsive; accessible tables) with summary tiles, ranked bottlenecks, route metrics,
+  per-route screenshots, critical paths, API chains, hop trees, and request waterfalls, endpoint
+  latency and bytes-by-type charts, and stress charts (latency percentiles, throughput, errors)
+  with per-hop tables. Also `summary.md`, `routes.csv`, `endpoints.csv`, `stress/stages.csv`,
+  `stress/hops.csv`, standalone SVG charts, and a redacted `page.har` per route (bodies omitted;
+  credentials, cookies, and sensitive query parameters scrubbed). All report strings are escaped
+  and CSV cells are protected against formula injection.
 - Configurable budgets (`perf.budgets`), `summary.json`, `endpoints.json`, `bottlenecks.json`,
   `--json` (summary on stdout), and `--fail-on warning|critical` (exit code 1, reports still
   written).

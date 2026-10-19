@@ -106,7 +106,14 @@ describe('launchscope perf route discovery (fixture app)', () => {
     );
     assert.equal(server.hits.get('/sitemap.xml'), undefined);
     const files = await readdir(join(perfDir, 'routes', 'about'));
-    assert.deepEqual(files.sort(), ['loads.json', 'screenshot.png', 'trace.json', 'trace.txt']);
+    assert.deepEqual(files.sort(), [
+      'loads.json',
+      'page.har',
+      'screenshot.png',
+      'trace.json',
+      'trace.txt',
+      'waterfall.svg',
+    ]);
   });
 });
 
