@@ -73,9 +73,10 @@ export async function launchBrowser(settings) {
  * @param {Browser} browser
  * @param {typeof import('playwright').devices} devices
  * @param {import('../settings.js').PerfSettings} settings
+ * @param {{ harPath?: string }} [options] Record a HAR (bodies omitted) written on context close.
  * @returns {Promise<BrowserContext>}
  */
-export async function createMeasurementContext(browser, devices, settings) {
+export async function createMeasurementContext(browser, devices, settings, { harPath } = {}) {
   if (settings.storageStatePath) await assertReadable(settings.storageStatePath);
 
   const device = settings.device === 'mobile' ? devices[MOBILE_DEVICE] : undefined;
@@ -83,6 +84,7 @@ export async function createMeasurementContext(browser, devices, settings) {
     ...(device ?? { viewport: DESKTOP_VIEWPORT }),
     storageState: settings.storageStatePath,
     serviceWorkers: 'block',
+    ...(harPath ? { recordHar: { path: harPath, content: /** @type {const} */ ('omit') } } : {}),
   });
 
   const headerEntries = Object.entries(settings.headers);

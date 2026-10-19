@@ -11,6 +11,7 @@ import { launchBrowser } from './capture/browser.js';
 import { readSitemap, RouteQueue } from './discover/routes.js';
 import { measureRoute } from './measure.js';
 import { createSlugAllocator } from './report/paths.js';
+import { writeReport } from './report/write-report.js';
 import { toReportableSettings } from './settings.js';
 import { analyzeStress } from './stress/analyze.js';
 import { runStress } from './stress/runner.js';
@@ -90,12 +91,19 @@ export async function runPerf(settings, runtime) {
   try {
     logger.info('');
     for (let route = queue.next(); route; route = queue.next()) {
-      const measurement = await measureRoute({ browser, devices, settings, url: route.url });
+      const slug = allocateSlug(route.url);
+      await mkdir(join(perfDirectory, 'routes', slug), { recursive: true });
+      const measurement = await measureRoute({
+        browser,
+        devices,
+        settings,
+        url: route.url,
+        harPath: join(perfDirectory, 'routes', slug, 'page.har'),
+      });
       if (route.depth < settings.depth) {
         for (const link of measurement.links) queue.add(link, route.depth + 1, 'link');
       }
 
-      const slug = allocateSlug(route.url);
       const result = await writeRouteArtifacts({
         perfDirectory,
         slug,
@@ -165,6 +173,26 @@ export async function runPerf(settings, runtime) {
   await writeJsonFile(join(perfDirectory, 'summary.json'), summary);
   await writeJsonFile(join(perfDirectory, 'endpoints.json'), analysis.endpoints);
   await writeJsonFile(join(perfDirectory, 'bottlenecks.json'), analysis.bottlenecks);
+  const report = await writeReport({
+    perfDirectory,
+    summary,
+    details: new Map(
+      results.map((result) => [
+        result.slug,
+        {
+          trace: result.trace,
+          load:
+            result.measurement.loads.find(
+              (load) =>
+                load.cache === 'cold' &&
+                load.error === null &&
+                load.run === result.representativeRun,
+            ) ?? null,
+          files: { screenshot: result.measurement.screenshot !== null, har: true },
+        },
+      ]),
+    ),
+  });
 
   logger.info('');
   const skipped = Object.entries(queue.skipped)
@@ -175,7 +203,8 @@ export async function runPerf(settings, runtime) {
       (skipped ? logger.paint.dim(` · skipped: ${skipped}`) : ''),
   );
   writeFindings(analysis.bottlenecks, logger);
-  logger.success(`Report directory: ${perfDirectory}`);
+  logger.success(`Report: ${logger.paint.cyan(report.html)}`);
+  logger.info(logger.paint.dim(`  All files: ${perfDirectory}`));
 
   if (settings.json) io.stdout.write(`${JSON.stringify(summary, null, 2)}\n`);
   enforceFailOn(analysis.bottlenecks, settings.failOn);

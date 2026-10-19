@@ -1,5 +1,6 @@
 import { createMeasurementContext } from './capture/browser.js';
 import { capturePageLoad } from './capture/page-capture.js';
+import { redactHarFile } from './report/har.js';
 
 /**
  * @typedef {object} RouteMeasurement
@@ -18,9 +19,10 @@ import { capturePageLoad } from './capture/page-capture.js';
  * @param {typeof import('playwright').devices} options.devices
  * @param {import('./settings.js').PerfSettings} options.settings
  * @param {string} options.url
+ * @param {string} [options.harPath] Where to save a redacted HAR of the first cold run.
  * @returns {Promise<RouteMeasurement>}
  */
-export async function measureRoute({ browser, devices, settings, url }) {
+export async function measureRoute({ browser, devices, settings, url, harPath }) {
   /** @type {import('./capture/page-capture.js').PageLoad[]} */
   const loads = [];
   /** @type {Buffer | null} */
@@ -29,9 +31,12 @@ export async function measureRoute({ browser, devices, settings, url }) {
   let links = [];
 
   for (let run = 1; run <= settings.runs; run += 1) {
-    const context = await createMeasurementContext(browser, devices, settings);
+    const first = run === 1;
+    const recordHarTo = first ? harPath : undefined;
+    const context = await createMeasurementContext(browser, devices, settings, {
+      harPath: recordHarTo,
+    });
     try {
-      const first = run === 1;
       const result = await capturePageLoad({
         context,
         url,
@@ -50,6 +55,7 @@ export async function measureRoute({ browser, devices, settings, url }) {
     } finally {
       await context.close();
     }
+    if (recordHarTo) await redactHarFile(recordHarTo);
   }
 
   if (settings.warmRuns > 0) {
