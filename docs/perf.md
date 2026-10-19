@@ -174,6 +174,11 @@ launchscope perf http://localhost:3000 --config launchscope.config.json --dry-ru
 6. **Stress test** (with `--stress`): routes are replayed by virtual users at rising concurrency.
 7. **Report**: JSON, CSV, Markdown, SVG, HAR, and the HTML report are written.
 
+**Stopping early.** Press Ctrl+C (or send SIGTERM, as CI does when a job is cancelled) at any
+point: the route being measured is abandoned, the routes already measured are analyzed and
+written as a normal report marked `"interrupted": true` in `summary.json`, and the process exits
+with code 130. Press Ctrl+C a second time to quit immediately.
+
 ## Reading the report
 
 Each run gets a new directory; earlier runs are never overwritten.
@@ -305,7 +310,7 @@ Stress tests generate real load, so they are deliberately hard to misuse:
   parties.
 - **Circuit breaker.** A stage stops, and no further stages run, once more than
   `stress.maxErrorRate` (default 50%) of its requests fail (after at least 20 requests).
-- **Ctrl+C** stops the current stage and keeps what was measured.
+- **Ctrl+C** (or SIGTERM) stops the current stage, keeps what was measured, writes the report, and exits with code 130.
 - Requests identify themselves: `User-Agent: launchscope/<version> (stress test; +<repo>)`.
 
 ## Options reference
@@ -432,6 +437,7 @@ launchscope perf http://localhost:3000 --runs 3 --fail-on critical --json > perf
 | 1         | a finding reached `--fail-on`                                                        |
 | 2         | invalid command, option, target, or configuration (including stress-safety refusals) |
 | 70        | unexpected internal error                                                            |
+| 130       | interrupted with Ctrl+C or SIGTERM; a partial report was still written               |
 
 A complete GitHub Actions workflow that starts your app, runs LaunchScope, and uploads the report
 is in [`examples/github-actions.yml`](../examples/github-actions.yml).

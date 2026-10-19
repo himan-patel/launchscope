@@ -6,6 +6,12 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- Graceful interruption for `perf`: Ctrl+C or SIGTERM during measurement or stress testing
+  stops the run, writes a partial report (`"interrupted": true` in `summary.json`), and exits
+  with code 130; a second signal exits immediately.
+
 ## [0.2.0] - 2026-10-19
 
 First release with a working check module: performance.
