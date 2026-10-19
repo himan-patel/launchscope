@@ -1,6 +1,7 @@
 import { MOBILE_CPU_SLOWDOWN, THROTTLE_PRESETS } from './browser.js';
 import { NetworkRecorder } from './network-recorder.js';
 import { applyObservedCauses } from './causality.js';
+import { measureInteractive } from './interactive.js';
 import { installRequestTracker } from './request-tracker.js';
 import { installVitalsObserver } from './vitals.js';
 
@@ -9,6 +10,9 @@ const MAX_SETTLE_MS = 10_000;
 const MAX_CONSOLE_MESSAGES = 20;
 const MAX_MESSAGE_LENGTH = 300;
 const MAX_LINKS = 500;
+// Time to Interactive needs a 5 s quiet window to be observed; this caps the extra wait.
+const MAX_INTERACTIVE_WAIT_MS = 20_000;
+const INTERACTIVE_POLL_MS = 250;
 
 /**
  * @typedef {object} PageLoad
@@ -107,16 +111,33 @@ export async function capturePageLoad({
     });
     const wallTimeMs = Math.round(performance.now() - wallStart);
 
-    const vitals = error ? null : await safeEvaluate(page, () => window.__launchscopeVitals());
+    const interactive = error
+      ? null
+      : await waitForInteractive(
+          page,
+          recorder,
+          Math.min(MAX_INTERACTIVE_WAIT_MS, settings.timeoutMs),
+        );
+    const pageVitals = error ? null : await safeEvaluate(page, () => window.__launchscopeVitals());
+    const vitals =
+      pageVitals && interactive
+        ? {
+            ...pageVitals,
+            tbtMs: interactive.tbtMs,
+            ttiMs: interactive.ttiMs,
+            tbtComplete: interactive.complete,
+          }
+        : pageVitals;
     const links = collectLinks && !error ? await readLinks(page) : [];
     const title = error ? null : await page.title().catch(() => null);
     const image =
       screenshot && !error ? await page.screenshot({ type: 'png' }).catch(() => null) : null;
 
     // Requests still in flight are closed at the capture end (navigation start ≈ time origin).
-    const requests = await recorder.finish(wallTimeMs);
+    const captureEndMs = Math.round(performance.now() - wallStart);
+    const requests = await recorder.finish(captureEndMs);
     applyObservedCauses(requests, (await readTrackedCalls(page)) ?? []);
-    const sockets = recorder.sockets(wallTimeMs);
+    const sockets = recorder.sockets(captureEndMs);
 
     /** @type {PageLoad} */
     const load = {
@@ -194,6 +215,35 @@ export async function startRecording({
  */
 export function readTrackedCalls(page) {
   return safeEvaluate(page, () => window.__launchscopeRequests?.() ?? []);
+}
+
+/**
+ * Keeps observing the page until Time to Interactive can be determined (a 5 s CPU and network
+ * quiet window after FCP has actually happened), or until `maxWaitMs`. Long tasks come from the
+ * page; network activity comes from the recorder, shifted onto the page's clock using the
+ * wall-clock time of the first request and the page's `performance.timeOrigin`.
+ *
+ * @param {import('playwright').Page} page
+ * @param {NetworkRecorder} recorder
+ * @param {number} maxWaitMs
+ * @returns {Promise<import('./interactive.js').InteractiveResult | null>} Null when the browser
+ *   has no Long Tasks API or the page never painted.
+ */
+export async function waitForInteractive(page, recorder, maxWaitMs) {
+  const deadline = Date.now() + maxWaitMs;
+  for (;;) {
+    const observed = await safeEvaluate(page, () => window.__launchscopeInteractivity?.() ?? null);
+    if (!observed?.longTasksSupported) return null;
+    const offset = recorder.originWallMs === null ? 0 : recorder.originWallMs - observed.timeOrigin;
+    const requests = recorder.quietWindowRequests().map(({ startMs, endMs }) => ({
+      startMs: startMs + offset,
+      endMs: endMs === null ? null : endMs + offset,
+    }));
+    const final = Date.now() >= deadline;
+    const result = measureInteractive({ ...observed, requests, final });
+    if (!result || result.complete || final) return result;
+    await new Promise((resolve) => setTimeout(resolve, INTERACTIVE_POLL_MS));
+  }
 }
 
 /**

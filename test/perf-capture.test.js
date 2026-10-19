@@ -86,6 +86,10 @@ describe('capturePageLoad (real Chromium against the fixture app)', () => {
     assert.ok((load.vitals?.fcpMs ?? 0) > 0);
     assert.ok((load.vitals?.lcpMs ?? 0) > 0);
     assert.equal(typeof load.vitals?.cls, 'number');
+    // The fixture page goes quiet right after loading, so TTI is observed and TBT is final.
+    assert.equal(load.vitals?.tbtComplete, true);
+    assert.ok((load.vitals?.ttiMs ?? 0) >= (load.vitals?.fcpMs ?? Infinity));
+    assert.equal(typeof load.vitals?.tbtMs, 'number');
 
     assert.ok(screenshot && screenshot.length > 0, 'screenshot captured');
     assert.ok(load.links.includes(`${server.origin}/dashboard`));

@@ -5,8 +5,20 @@
  * Values are lab measurements from a single load:
  * - LCP: last `largest-contentful-paint` entry before collection.
  * - CLS: largest session window of layout shifts (1 s gap, 5 s cap), excluding shifts after input.
- * - TBT: sum of (long task duration − 50 ms) for long tasks starting after FCP. Lab
- *   approximation: the window ends at collection time rather than at Time to Interactive.
+ * - TBT and TTI: not computed here. The page exposes its long tasks, FCP, DOMContentLoaded and
+ *   clock origin through `__launchscopeInteractivity()`, and `interactive.js` computes both
+ *   exactly as defined (5 s quiet window), together with network activity from the Chrome
+ *   DevTools Protocol. They are null in browsers without the Long Tasks API (Firefox, WebKit).
+ */
+
+/**
+ * @typedef {object} PageInteractivity Raw observations for TTI/TBT, on the page's clock.
+ * @property {number} timeOrigin `performance.timeOrigin` (epoch ms).
+ * @property {number} nowMs
+ * @property {number | null} fcpMs
+ * @property {number | null} domContentLoadedMs
+ * @property {Array<[number, number]>} longTasks `[startMs, durationMs]` pairs.
+ * @property {boolean} longTasksSupported
  */
 
 /**
@@ -16,7 +28,9 @@
  * @property {number | null} lcpMs
  * @property {string | null} lcpResourceUrl
  * @property {number} cls
- * @property {number} tbtMs
+ * @property {number | null} tbtMs Total Blocking Time from FCP to TTI (null without long-task data).
+ * @property {number | null} ttiMs Time to Interactive (null if no quiet window was observed).
+ * @property {boolean} tbtComplete False when TTI was not reached, so TBT is a lower bound.
  * @property {number} longTaskCount
  * @property {number | null} domContentLoadedMs
  * @property {number | null} loadMs
@@ -80,6 +94,29 @@ export function installVitalsObserver() {
     value: () => lastMutation,
   });
 
+  const longTasksSupported = (PerformanceObserver.supportedEntryTypes ?? []).includes('longtask');
+  Object.defineProperty(window, '__launchscopeInteractivity', {
+    configurable: false,
+    enumerable: false,
+    value: () => {
+      const navigation = /** @type {PerformanceNavigationTiming | undefined} */ (
+        performance.getEntriesByType('navigation')[0]
+      );
+      const fcpEntry = performance
+        .getEntriesByType('paint')
+        .find((entry) => entry.name === 'first-contentful-paint');
+      const dcl = navigation?.domContentLoadedEventEnd;
+      return {
+        timeOrigin: performance.timeOrigin,
+        nowMs: performance.now(),
+        fcpMs: fcpEntry ? fcpEntry.startTime : null,
+        domContentLoadedMs: dcl !== undefined && dcl > 0 ? dcl : null,
+        longTasks: state.longTasks.slice(),
+        longTasksSupported,
+      };
+    },
+  });
+
   Object.defineProperty(window, '__launchscopeVitals', {
     configurable: false,
     enumerable: false,
@@ -106,11 +143,6 @@ export function installVitalsObserver() {
         cls = Math.max(cls, windowValue);
       }
 
-      let tbt = 0;
-      for (const [start, duration] of state.longTasks) {
-        if (fcp !== null && start >= fcp) tbt += Math.max(0, duration - 50);
-      }
-
       const positive = (/** @type {number | undefined} */ value) =>
         value !== undefined && value > 0 ? value : null;
 
@@ -120,7 +152,9 @@ export function installVitalsObserver() {
         lcpMs: state.lcp,
         lcpResourceUrl: state.lcpUrl,
         cls: Math.round(cls * 10_000) / 10_000,
-        tbtMs: Math.round(tbt),
+        tbtMs: null,
+        ttiMs: null,
+        tbtComplete: false,
         longTaskCount: state.longTasks.length,
         domContentLoadedMs: positive(navigation?.domContentLoadedEventEnd),
         loadMs: positive(navigation?.loadEventEnd),

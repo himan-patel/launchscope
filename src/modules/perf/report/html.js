@@ -198,7 +198,7 @@ function renderRoutes(routes, details, traceUrlTemplate) {
 <th scope="row"><a href="#route-${e(route.slug)}">${e(routeLabel(route.url))}</a></th>
 <td>${route.error ? `<span class="bad">failed</span>` : e(route.status ?? '–')}</td>
 <td>${ms(m.ttfbMs?.p50)}</td><td>${ms(m.fcpMs?.p50)}</td><td>${ms(m.lcpMs?.p50)}</td><td>${ms(m.lcpMs?.p95)}</td>
-<td>${m.cls ? e(m.cls.p50.toFixed(3)) : '–'}</td><td>${ms(m.tbtMs?.p50)}</td>
+<td>${m.cls ? e(m.cls.p50.toFixed(3)) : '–'}</td><td>${ms(m.tbtMs?.p50)}</td><td>${ms(m.ttiMs?.p50)}</td>
 <td>${num(m.requestCount?.p50)}</td><td>${bytes(m.transferBytes?.p50)}</td><td>${num(m.apiCalls?.p50)}</td>
 </tr>`;
     })
@@ -217,7 +217,7 @@ function renderRoutes(routes, details, traceUrlTemplate) {
 <p class="lede">Medians of cold-cache runs unless noted. Select a route for its waterfall, hop tree, and critical path.</p>
 <div class="table-wrap"><table>
 <caption>Route metrics</caption>
-<thead><tr><th scope="col">Route</th><th scope="col">Status</th><th scope="col">TTFB</th><th scope="col">FCP</th><th scope="col">LCP</th><th scope="col">LCP p95</th><th scope="col">CLS</th><th scope="col">TBT</th><th scope="col">Requests</th><th scope="col">Transferred</th><th scope="col">API calls</th></tr></thead>
+<thead><tr><th scope="col">Route</th><th scope="col">Status</th><th scope="col">TTFB</th><th scope="col">FCP</th><th scope="col">LCP</th><th scope="col">LCP p95</th><th scope="col">CLS</th><th scope="col">TBT</th><th scope="col">TTI</th><th scope="col">Requests</th><th scope="col">Transferred</th><th scope="col">API calls</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 ${chart ? `<figure class="chart">${inlineSvg(chart)}<figcaption><details><summary>Show data</summary><div class="table-wrap"><table><caption>Bytes by resource type</caption><thead><tr><th scope="col">Route</th><th scope="col">Type</th><th scope="col">Requests</th><th scope="col">Transferred</th><th scope="col">Decoded</th></tr></thead><tbody>${chartData}</tbody></table></div></details></figcaption></figure>` : ''}
 ${routes.map((route) => renderRouteDetail(route, details.get(route.slug), traceUrlTemplate)).join('')}
@@ -408,7 +408,7 @@ function renderMethod() {
 <dl class="glossary">
 <div><dt>Cold runs</dt><dd>Each run loads the route in a fresh browser context (empty cache, new connections). Warm runs reuse a context primed by one unrecorded load.</dd></div>
 <div><dt>Timing phases</dt><dd>From the Chrome DevTools Protocol: queue, DNS, connect, TLS, send, wait (time to first byte after sending), and download. Waterfall bars show waiting (light) and downloading (solid).</dd></div>
-<div><dt>Web Vitals</dt><dd>Lab values from one device profile: TTFB, FCP, LCP, CLS (largest session window), and TBT (long-task time after FCP until collection; an approximation of the field metric).</dd></div>
+<div><dt>Web Vitals</dt><dd>Lab values from one device profile: TTFB, FCP, LCP, CLS (largest session window), TTI (the end of the last long task before the first 5 s window with no long tasks and at most two GET requests in flight), and TBT (long-task time beyond 50 ms between FCP and TTI). TTI and TBT follow Lighthouse&#39;s definitions and are measured in Chromium only.</dd></div>
 <div><dt>Hop tree</dt><dd>Parent links come from each request's initiator (the document, stylesheet, or script that caused it).</dd></div>
 <div><dt>Sequential API chains</dt><dd>An API call that the page issued while handling another API call's response (fetch, its body methods, or XMLHttpRequest completion handlers, including promise continuations). Recorded in the page as it happens; timing alone never creates a link.</dd></div>
 <div><dt>Critical path</dt><dd>Walks back from the last meaningful request (beacons excluded) through waited-for and triggered-by links.</dd></div>

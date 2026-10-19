@@ -206,7 +206,7 @@ function routeFindings(route, budgets) {
       severity,
       category: 'web-vitals',
       title: `${name} on ${label} is ${format(value)}`,
-      detail: `Median of ${route.runs.cold - route.runs.failed} cold run(s); ${severity} threshold is ${format(budgets[budget][severity])}.`,
+      detail: `Median of ${route.runs.cold - route.runs.failed} cold run(s); ${severity} threshold is ${format(budgets[budget][severity])}.${budget === 'tbtMs' && route.tbtLowerBoundRuns > 0 ? ` In ${route.tbtLowerBoundRuns} run(s) the page never reached Time to Interactive, so their TBT is a lower bound.` : ''}`,
       recommendation,
       subject,
       evidence: { median: value, threshold: budgets[budget][severity] },

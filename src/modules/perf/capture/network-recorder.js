@@ -289,6 +289,25 @@ export class NetworkRecorder {
   }
 
   /**
+   * GET requests that count toward Time to Interactive's network quiet window, as Lighthouse
+   * counts them: not failed, status below 400, and not streaming responses (WebSockets are not
+   * request records). `endMs` is null while the request is in flight.
+   *
+   * @returns {Array<{ startMs: number, endMs: number | null }>}
+   */
+  quietWindowRequests() {
+    /** @type {Array<{ startMs: number, endMs: number | null }>} */
+    const requests = [];
+    for (const record of this.#records.values()) {
+      if (record.method !== 'GET' || record.failure || this.#streaming.has(record.id)) continue;
+      if (record.status !== null && record.status >= 400) continue;
+      const inFlight = this.#inflight.has(record.id);
+      requests.push({ startMs: record.startMs, endMs: inFlight ? null : record.endMs });
+    }
+    return requests;
+  }
+
+  /**
    * Resolves once no request has been in flight for `idleMs`, or after `timeoutMs`.
    *
    * @param {{ idleMs: number, timeoutMs: number }} options

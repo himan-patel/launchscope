@@ -44,7 +44,7 @@ Bottlenecks · 1 critical, 3 warning, 2 info
 
 - **Measures every route in a real browser.** Discovers routes from your sitemap, links, source
   code (Next.js, SvelteKit, Nuxt, Astro, Remix, Angular, React Router), or a list; loads each one
-  several times with a cold cache; and records Web Vitals (TTFB, FCP, LCP, CLS, TBT) plus every
+  several times with a cold cache; and records Web Vitals (TTFB, FCP, LCP, CLS, TBT, TTI) plus every
   request: DNS, connect, TLS, server wait, and download times, sizes, status, and caching.
 - **Traces every hop.** Builds each page's request tree (document → scripts → API calls), detects
   API calls that wait on each other, follows redirects, splits GraphQL by operation, tracks
