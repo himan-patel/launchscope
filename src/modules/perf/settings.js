@@ -112,7 +112,7 @@ const FORBIDDEN_HEADERS = new Set([
   'trailer',
 ]);
 
-const CONFIG_KEYS = new Set([
+export const CONFIG_KEYS = new Set([
   'routes',
   'maxRoutes',
   'depth',
@@ -140,7 +140,7 @@ const CONFIG_KEYS = new Set([
   'exportK6',
   'lighthouse',
 ]);
-const STRESS_CONFIG_KEYS = new Set([
+export const STRESS_CONFIG_KEYS = new Set([
   'stages',
   'duration',
   'timeout',

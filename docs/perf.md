@@ -618,6 +618,19 @@ with `--config`). CLI flags override it. Strings may reference environment varia
 
 A copy lives at [`examples/launchscope.config.json`](../examples/launchscope.config.json).
 
+**Editor support.** A JSON Schema ships with LaunchScope. Add a `$schema` line to get
+autocomplete, inline docs, and validation in VS Code and other editors:
+
+```json
+{
+  "$schema": "https://raw.githubusercontent.com/himan-patel/launchscope/main/schema/launchscope.config.schema.json",
+  "perf": { "runs": 5 }
+}
+```
+
+(When LaunchScope is installed from npm, `./node_modules/launchscope/schema/launchscope.config.schema.json`
+works offline.) LaunchScope itself still validates every value at run time.
+
 ## Budgets
 
 Budgets turn measurements into findings. Each has a `warning` and a `critical` level; a bare
