@@ -53,6 +53,8 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {string | null} cacheControl
  * @property {ServerTimingSummary[]} serverTiming
  * @property {number | null} largestJsonArray
+ * @property {string | null} graphqlOperation GraphQL operation name; endpoints are split by it.
+ * @property {import('../capture/graphql.js').OperationType | null} graphqlType
  */
 
 /**
@@ -94,7 +96,7 @@ export function aggregateEndpoints(loads) {
   for (const load of loads) {
     /** @type {Map<string, number>} */
     const perLoad = new Map();
-    /** @type {Map<string, number>} */
+    /** @type {Map<string, { key: string, count: number }>} */
     const identical = new Map();
 
     for (const request of load.requests) {
@@ -102,7 +104,8 @@ export function aggregateEndpoints(loads) {
       const url = safeUrl(request.url);
       if (!url) continue;
       const pathTemplate = templatePath(url.pathname);
-      const key = `${request.method} ${url.origin}${pathTemplate}`;
+      const operation = request.graphql;
+      const key = `${request.method} ${url.origin}${pathTemplate}${operation ? ` ${operation.name}` : ''}`;
 
       let group = groups.get(key);
       if (!group) {
@@ -125,6 +128,8 @@ export function aggregateEndpoints(loads) {
             contentType: null,
             cacheControl: null,
             largestJsonArray: null,
+            graphqlOperation: operation?.name ?? null,
+            graphqlType: operation?.type ?? null,
           },
           routes: new Set(),
           durations: [],
@@ -141,8 +146,11 @@ export function aggregateEndpoints(loads) {
       meta.calls += 1;
       group.routes.add(load.routeSlug);
       perLoad.set(key, (perLoad.get(key) ?? 0) + 1);
-      const identicalKey = `${request.method} ${request.url}`;
-      identical.set(identicalKey, (identical.get(identicalKey) ?? 0) + 1);
+      // Same method + URL (+ same GraphQL body) is an identical call; differing variables are not.
+      const identicalKey = `${request.method} ${request.url} ${operation?.bodyHash ?? ''}`;
+      const seen = identical.get(identicalKey) ?? { key, count: 0 };
+      seen.count += 1;
+      identical.set(identicalKey, seen);
 
       if (request.status !== null) {
         meta.statusCounts[request.status] = (meta.statusCounts[request.status] ?? 0) + 1;
@@ -180,14 +188,9 @@ export function aggregateEndpoints(loads) {
       const group = /** @type {NonNullable<ReturnType<typeof groups.get>>} */ (groups.get(key));
       group.meta.maxCallsPerLoad = Math.max(group.meta.maxCallsPerLoad, count);
     }
-    for (const [identicalKey, count] of identical) {
-      const [method, ...rest] = identicalKey.split(' ');
-      const url = safeUrl(rest.join(' '));
-      if (!url) continue;
-      const group = groups.get(`${method} ${url.origin}${templatePath(url.pathname)}`);
-      if (group) {
-        group.meta.maxIdenticalCallsPerLoad = Math.max(group.meta.maxIdenticalCallsPerLoad, count);
-      }
+    for (const { key, count } of identical.values()) {
+      const group = /** @type {NonNullable<ReturnType<typeof groups.get>>} */ (groups.get(key));
+      group.meta.maxIdenticalCallsPerLoad = Math.max(group.meta.maxIdenticalCallsPerLoad, count);
     }
   }
 

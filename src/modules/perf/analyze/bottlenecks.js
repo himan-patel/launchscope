@@ -382,7 +382,7 @@ function endpointFindings(endpoint, budgets) {
   /** @type {Finding[]} */
   const findings = [];
   const subject = { endpoint: endpoint.key };
-  const name = `${endpoint.method} ${endpoint.thirdParty ? `${endpoint.origin}${endpoint.pathTemplate}` : endpoint.pathTemplate}`;
+  const name = `${endpoint.method} ${endpoint.thirdParty ? `${endpoint.origin}${endpoint.pathTemplate}` : endpoint.pathTemplate}${endpoint.graphqlOperation ? ` (${endpoint.graphqlOperation})` : ''}`;
   const isApi = endpoint.resourceType === 'Fetch' || endpoint.resourceType === 'XHR';
 
   if (isApi && endpoint.durationMs) {

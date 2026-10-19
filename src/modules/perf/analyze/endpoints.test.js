@@ -40,6 +40,7 @@ function api(fields) {
     failure: null,
     pending: false,
     jsonShape: null,
+    graphql: null,
     ...fields,
   };
 }

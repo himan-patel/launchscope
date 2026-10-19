@@ -77,6 +77,8 @@ function endpoint(overrides = {}) {
     cacheControl: null,
     serverTiming: [],
     largestJsonArray: null,
+    graphqlOperation: null,
+    graphqlType: null,
     ...overrides,
   };
 }

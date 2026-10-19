@@ -59,6 +59,27 @@ const DASHBOARD_JS = `
 })();
 `;
 
+const GQL_HTML = `<!doctype html><html lang="en"><head><meta charset="utf-8"><title>GraphQL</title></head>
+<body><h1>GraphQL</h1><script src="/static/gql.js"></script></body></html>`;
+
+const GQL_JS = `
+(async () => {
+  const gql = (body) => fetch('/graphql', {
+    method: 'POST',
+    headers: { 'content-type': 'application/json' },
+    body: JSON.stringify(body),
+  }).then((r) => r.json());
+  const viewer = { operationName: 'GetViewer', query: 'query GetViewer { viewer { id } }' };
+  await Promise.all([
+    gql(viewer),
+    gql(viewer),
+    gql({ operationName: 'SearchProjects', query: 'query SearchProjects($q: String) { search(q: $q) { id } }', variables: { q: 'a' } }),
+    gql({ operationName: 'SearchProjects', query: 'query SearchProjects($q: String) { search(q: $q) { id } }', variables: { q: 'b' } }),
+    fetch('/graphql?operationName=Feed&extensions=' + encodeURIComponent(JSON.stringify({ persistedQuery: { version: 1, sha256Hash: 'abc' } }))).then((r) => r.json()),
+  ]);
+})();
+`;
+
 const APP_JS = `document.body.dataset.ready = 'true';`;
 const APP_CSS = `body { font-family: sans-serif; } h1 { color: #333; }`;
 const HERO_SVG = `<svg xmlns="http://www.w3.org/2000/svg" width="400" height="200"><rect width="400" height="200" fill="#4F46E5"/></svg>`;
@@ -151,6 +172,21 @@ export async function startFixtureServer() {
           request.headers.authorization === 'Bearer test-token' ||
           /(?:^|;\s*)session=valid(?:;|$)/.test(request.headers.cookie ?? '');
         return authorized ? html(PRIVATE_HTML) : send(401, 'text/plain', 'unauthorized');
+      }
+      case '/gql':
+        return html(GQL_HTML);
+      case '/static/gql.js':
+        return send(200, 'text/javascript', GQL_JS, { 'cache-control': 'max-age=31536000' });
+      case '/graphql': {
+        let operation = url.searchParams.get('operationName') ?? '';
+        if (request.method === 'POST') {
+          let raw = '';
+          for await (const chunk of request) raw += chunk;
+          operation = JSON.parse(raw).operationName ?? '';
+        }
+        if (operation === 'SearchProjects')
+          await new Promise((resolve) => setTimeout(resolve, 300));
+        return send(200, 'application/json', JSON.stringify({ data: { operation } }));
       }
       case '/echo-headers':
         return send(200, 'application/json', JSON.stringify(request.headers));
