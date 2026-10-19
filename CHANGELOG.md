@@ -11,6 +11,14 @@ All notable changes to this project are documented here. The format follows
 - `launchscope perf <target>` command with route, measurement, authentication, stress, and output
   options; settings merge CLI flags, the `perf` config section, and defaults with strict
   validation (unknown config keys are rejected). `--dry-run` validates without a browser.
+- Browser capture for `perf`: each route is loaded in real Chromium (Playwright) with a fresh
+  context per cold run, recording every request via the Chrome DevTools Protocol: timing phases
+  (queue, DNS, connect, TLS, send, wait, download), compressed and decoded sizes, initiators,
+  redirect hops, cache status, allow-listed response headers, and JSON payload shape (bodies are
+  never stored). Web Vitals (TTFB, FCP, LCP, CLS, TBT) are collected in the page. Supports
+  desktop/mobile profiles, 4G/3G throttling, warm-cache runs, installed browser channels, and
+  extra headers sent to the target origin only. Per-route `loads.json` and `screenshot.png` are
+  written to the report directory.
 
 - `launchscope` CLI with branded help, `--version`, and global options for config, output
   directory, color, and verbosity.
