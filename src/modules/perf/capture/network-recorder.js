@@ -6,6 +6,9 @@
  * redirect hops, and the initiator (which document or script triggered each request).
  */
 
+import { createHash } from 'node:crypto';
+import { detectGraphqlOperation, looksLikeGraphql } from './graphql.js';
+
 /** Response headers kept on records. Everything else (cookies included) is dropped. */
 const KEPT_RESPONSE_HEADERS = new Set([
   'content-type',
@@ -87,6 +90,7 @@ const MAX_JSON_INSPECT_BYTES = 5 * 1024 * 1024;
  * @property {{ errorText: string, canceled: boolean } | null} failure
  * @property {boolean} pending True when still in flight when capture ended.
  * @property {JsonShape | null} jsonShape
+ * @property {import('./graphql.js').GraphqlOperation | null} graphql Operation, for GraphQL calls.
  */
 
 /**
@@ -218,7 +222,51 @@ export class NetworkRecorder {
       failure: null,
       pending: false,
       jsonShape: null,
+      graphql: null,
     });
+    this.#identifyGraphql(event);
+  }
+
+  /**
+   * Records the GraphQL operation behind a request. POST bodies are fetched on demand (only for
+   * GraphQL-looking URLs), read for the operation name and type, and discarded.
+   *
+   * @param {any} event
+   */
+  #identifyGraphql(event) {
+    const record = this.#records.get(event.requestId);
+    if (!record || !looksLikeGraphql(record.url)) return;
+    if (record.method === 'GET') {
+      record.graphql = detectGraphqlOperation({ url: record.url, method: 'GET' });
+      return;
+    }
+    if (!event.request.hasPostData && !event.request.postData) return;
+    this.#bodyInspections.push(
+      (async () => {
+        try {
+          const postData =
+            event.request.postData ??
+            (await this.#session.send('Network.getRequestPostData', { requestId: record.id }))
+              .postData;
+          const operation = detectGraphqlOperation({
+            url: record.url,
+            method: record.method,
+            postData,
+          });
+          record.graphql = operation
+            ? {
+                ...operation,
+                bodyHash: createHash('sha256')
+                  .update(postData ?? '')
+                  .digest('hex')
+                  .slice(0, 16),
+              }
+            : null;
+        } catch {
+          // The body is no longer available; the request is grouped by URL instead.
+        }
+      })(),
+    );
   }
 
   /** @param {any} event */

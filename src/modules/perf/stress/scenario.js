@@ -128,7 +128,7 @@ function isReplayable(node, targetOrigin, includeAssets) {
 function label(node) {
   const url = new URL(node.redirectedFrom ?? node.url);
   const path = templatePath(url.pathname);
-  return `${node.method} ${path}`;
+  return `${node.method} ${path}${node.graphqlOperation ? ` (${node.graphqlOperation})` : ''}`;
 }
 
 /** @param {string} url */

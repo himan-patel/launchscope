@@ -47,6 +47,7 @@ const MAX_CHAINS = 5;
  * @property {number} redirectCount
  * @property {string | null} cacheControl Response Cache-Control header, if any.
  * @property {string | null} redirectedFrom First URL requested, when the request was redirected.
+ * @property {string | null} graphqlOperation GraphQL operation name, for GraphQL calls.
  * @property {ServerTimingMetric[]} serverTiming
  */
 
@@ -127,6 +128,7 @@ export function buildTrace(requests, pageUrl) {
       redirectCount: request.redirects.length,
       cacheControl: request.headers['cache-control'] ?? null,
       redirectedFrom: request.redirects[0]?.url ?? null,
+      graphqlOperation: request.graphql?.name ?? null,
       serverTiming: parseServerTiming(request.headers['server-timing']),
     });
   }
@@ -386,10 +388,12 @@ export function describeNode(node) {
   let label;
   try {
     const url = new URL(node.url);
-    label = node.thirdParty ? `${url.host}${url.pathname}` : `${url.pathname}${url.search}`;
+    const search = node.graphqlOperation ? '' : url.search;
+    label = node.thirdParty ? `${url.host}${url.pathname}` : `${url.pathname}${search}`;
   } catch {
     label = node.url;
   }
+  if (node.graphqlOperation) label = `${label} (${node.graphqlOperation})`;
   if (label.length > 80) label = `${label.slice(0, 77)}…`;
   return `${node.method === 'GET' ? '' : `${node.method} `}${label} [${node.resourceType}${node.status ? ` ${node.status}` : ''}]`;
 }

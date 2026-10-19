@@ -84,6 +84,8 @@ export function endpointsCsv(endpoints) {
       'compressed',
       'failures',
       'largest_json_array',
+      'graphql_operation',
+      'graphql_type',
       'status_counts',
       'server_timing',
     ],
@@ -107,6 +109,8 @@ export function endpointsCsv(endpoints) {
       endpoint.compressed,
       endpoint.failures,
       endpoint.largestJsonArray,
+      endpoint.graphqlOperation,
+      endpoint.graphqlType,
       Object.entries(endpoint.statusCounts)
         .map(([status, count]) => `${status}:${count}`)
         .join(' '),

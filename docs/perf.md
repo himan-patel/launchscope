@@ -250,6 +250,14 @@ use it, duration/server-wait/download distributions, transferred and decoded siz
 compression, cache headers, the largest JSON array in its responses, and the mean of each
 `Server-Timing` component.
 
+**GraphQL.** Requests to a path ending in `/graphql` or `/gql` (and GET requests carrying a
+GraphQL document) are split by operation, so `POST /graphql (GetViewer)` and
+`POST /graphql (SearchProjects)` are separate endpoints with their own numbers and findings. The
+operation name and type come from `operationName` or the document itself; persisted queries and
+batched requests (`GetUser+GetFlags`) are supported. Request bodies are read in memory only;
+reports keep the operation name and a short hash used to tell identical calls (same variables)
+from calls with different variables.
+
 ## Bottleneck rules
 
 Findings are ranked by severity (critical, warning, info) and then by impact. Every finding

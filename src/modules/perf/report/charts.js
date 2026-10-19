@@ -168,7 +168,8 @@ export function stressCharts(stress) {
  */
 export function endpointLabel(endpoint) {
   const host = endpoint.thirdParty ? new URL(endpoint.origin).host : '';
-  return `${endpoint.method} ${host}${endpoint.pathTemplate}`;
+  const operation = endpoint.graphqlOperation ? ` (${endpoint.graphqlOperation})` : '';
+  return `${endpoint.method} ${host}${endpoint.pathTemplate}${operation}`;
 }
 
 /**

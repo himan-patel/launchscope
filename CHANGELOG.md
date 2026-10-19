@@ -11,6 +11,10 @@ All notable changes to this project are documented here. The format follows
 - Graceful interruption for `perf`: Ctrl+C or SIGTERM during measurement or stress testing
   stops the run, writes a partial report (`"interrupted": true` in `summary.json`), and exits
   with code 130; a second signal exits immediately.
+- GraphQL-aware endpoints: calls to `/graphql` are split by operation name and type (from
+  `operationName` or the document; persisted and batched queries supported), so slow operations,
+  duplicates, and payloads are reported per operation. Duplicate detection ignores calls whose
+  variables differ. Hop trees, waterfalls, stress hops, and CSVs show the operation.
 
 ## [0.2.0] - 2026-10-19
 
