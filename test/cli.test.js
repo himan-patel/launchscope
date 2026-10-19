@@ -1,0 +1,122 @@
+import assert from 'node:assert/strict';
+import { execFile } from 'node:child_process';
+import { mkdtemp, readFile, rm, writeFile } from 'node:fs/promises';
+import { tmpdir } from 'node:os';
+import { join } from 'node:path';
+import { fileURLToPath } from 'node:url';
+import { promisify } from 'node:util';
+import { after, before, describe, it } from 'node:test';
+
+const execFileAsync = promisify(execFile);
+const BIN = fileURLToPath(new URL('../bin/launchscope.js', import.meta.url));
+const { version } = JSON.parse(await readFile(new URL('../package.json', import.meta.url), 'utf8'));
+
+/**
+ * Runs the real CLI entry point as a child process.
+ *
+ * @param {string[]} args
+ * @param {{ cwd?: string, env?: Record<string, string> }} [options]
+ * @returns {Promise<{ code: number, stdout: string, stderr: string }>}
+ */
+async function runCli(args, { cwd, env = {} } = {}) {
+  try {
+    const { stdout, stderr } = await execFileAsync(process.execPath, [BIN, ...args], {
+      cwd,
+      env: { PATH: process.env.PATH ?? '', NO_COLOR: '1', ...env },
+    });
+    return { code: 0, stdout, stderr };
+  } catch (error) {
+    const failure = /** @type {{ code: number, stdout: string, stderr: string }} */ (error);
+    return { code: failure.code, stdout: failure.stdout, stderr: failure.stderr };
+  }
+}
+
+describe('launchscope CLI', () => {
+  /** @type {string} */
+  let workdir;
+
+  before(async () => {
+    workdir = await mkdtemp(join(tmpdir(), 'launchscope-cli-'));
+  });
+
+  after(async () => {
+    await rm(workdir, { recursive: true, force: true });
+  });
+
+  it('prints the package version', async () => {
+    const result = await runCli(['--version']);
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout.trim(), version);
+  });
+
+  it('prints branded help with exit code 0', async () => {
+    const result = await runCli(['--help']);
+    assert.equal(result.code, 0);
+    assert.match(result.stdout, /▲ launchscope v\d+\.\d+\.\d+/);
+    assert.match(result.stdout, /Usage: launchscope \[options\] \[command\]/);
+    assert.match(result.stdout, /modules \[options\]\s+list available and planned check modules/);
+    assert.ok(!result.stdout.includes('\u001b['), 'NO_COLOR must strip ANSI codes');
+  });
+
+  it('exits with the usage code for an unknown command', async () => {
+    const result = await runCli(['launch-rockets']);
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /unknown command 'launch-rockets'/);
+  });
+
+  it('exits with the usage code for an unknown option', async () => {
+    const result = await runCli(['modules', '--nope']);
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /unknown option '--nope'/);
+  });
+
+  it('lists modules as a readable table on stderr, keeping stdout clean', async () => {
+    const result = await runCli(['modules'], { cwd: workdir });
+    assert.equal(result.code, 0);
+    assert.equal(result.stdout, '');
+    assert.match(result.stderr, /perf\s+in progress\s+Trace every route/);
+    assert.match(result.stderr, /security\s+planned/);
+  });
+
+  it('lists modules as JSON on stdout with --json', async () => {
+    const result = await runCli(['modules', '--json'], { cwd: workdir });
+    assert.equal(result.code, 0);
+    const modules = JSON.parse(result.stdout);
+    assert.ok(Array.isArray(modules));
+    assert.deepEqual(modules[0], {
+      id: 'perf',
+      title: 'Performance',
+      status: 'in-progress',
+      summary: modules[0].summary,
+    });
+  });
+
+  it('prints only errors with --quiet', async () => {
+    const result = await runCli(['--quiet', 'modules'], { cwd: workdir });
+    assert.equal(result.code, 0);
+    assert.equal(result.stderr, '');
+  });
+
+  it('rejects --quiet together with --verbose', async () => {
+    const result = await runCli(['--quiet', '--verbose', 'modules'], { cwd: workdir });
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /--quiet and --verbose cannot be used together/);
+  });
+
+  it('reports a missing explicit config file as a usage error', async () => {
+    const result = await runCli(['--config', 'nope.json', 'modules'], { cwd: workdir });
+    assert.equal(result.code, 2);
+    assert.match(result.stderr, /Could not read config file .*nope\.json/);
+  });
+
+  it('reports an invalid config file as a usage error', async () => {
+    await writeFile(join(workdir, 'launchscope.config.json'), '{ not json', 'utf8');
+    try {
+      const result = await runCli(['modules'], { cwd: workdir });
+      assert.equal(result.code, 2);
+      assert.match(result.stderr, /is not valid JSON/);
+    } finally {
+      await rm(join(workdir, 'launchscope.config.json'));
+    }
+  });
+});
