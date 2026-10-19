@@ -24,6 +24,12 @@ All notable changes to this project are documented here. The format follows
   third-party marking, and parsed `Server-Timing` metrics. Sequential API chains
   (`await fetch(a); await fetch(b)`) are inferred from timing and call stacks, and the critical
   path to the last request is identified. Written as `trace.json` and a readable `trace.txt`.
+- Route discovery for `perf`: breadth-first link crawling (`--depth`), `sitemap.xml` (including
+  same-origin sitemap indexes), explicit `--routes`, `--max-routes`, and `--exclude`. Logout-like
+  links, other origins, and non-page files are never visited; query-string variants are capped
+  per path. `routes.json` records what was measured and why other URLs were skipped.
+- `launchscope login <url>`: sign in once in a real browser window (SSO and MFA work) and save
+  the session (owner-only file permissions) for `--storage-state`.
 
 - `launchscope` CLI with branded help, `--version`, and global options for config, output
   directory, color, and verbosity.

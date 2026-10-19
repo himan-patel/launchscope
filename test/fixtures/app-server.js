@@ -142,6 +142,10 @@ export async function startFixtureServer() {
         return response.end();
       case '/logout':
         return html('<p>Logged out</p>');
+      case '/login':
+        return send(200, 'text/html; charset=utf-8', '<p>Signed in</p>', {
+          'set-cookie': 'session=valid; Path=/; HttpOnly; SameSite=Lax',
+        });
       case '/private': {
         const authorized =
           request.headers.authorization === 'Bearer test-token' ||

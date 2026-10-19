@@ -74,11 +74,25 @@ export function registerPerf(program, services) {
         const runtime = await services.resolveRuntime(command);
         const settings = resolvePerfSettings({
           target,
-          cli: options,
+          cli: onlyExplicitOptions(options, command),
           config: runtime.config.values.perf,
           cwd: runtime.io.cwd,
         });
         await runPerf(settings, runtime);
       },
     );
+}
+
+/**
+ * Keeps only options the user actually passed. Commander gives negatable flags such as
+ * `--no-sitemap` an implicit default of true, which would otherwise override config values.
+ *
+ * @param {PerfCliOptions} options
+ * @param {import('commander').Command} command
+ * @returns {PerfCliOptions}
+ */
+function onlyExplicitOptions(options, command) {
+  return Object.fromEntries(
+    Object.entries(options).filter(([name]) => command.getOptionValueSource(name) === 'cli'),
+  );
 }

@@ -30,15 +30,23 @@ export function slugifyRoute(routeUrl) {
  * @returns {Map<string, string>} Route URL → slug.
  */
 export function assignRouteSlugs(routeUrls) {
-  /** @type {Map<string, string>} */
-  const slugs = new Map();
+  const allocate = createSlugAllocator();
+  return new Map(routeUrls.map((routeUrl) => [routeUrl, allocate(routeUrl)]));
+}
+
+/**
+ * Returns a function that hands out unique slugs as routes are discovered one by one.
+ *
+ * @returns {(routeUrl: string) => string}
+ */
+export function createSlugAllocator() {
+  /** @type {Set<string>} */
   const used = new Set();
-  for (const routeUrl of routeUrls) {
+  return (routeUrl) => {
     const base = slugifyRoute(routeUrl);
     let slug = base;
     for (let suffix = 2; used.has(slug); suffix += 1) slug = `${base}-${suffix}`;
     used.add(slug);
-    slugs.set(routeUrl, slug);
-  }
-  return slugs;
+    return slug;
+  };
 }

@@ -4,10 +4,24 @@ import { formatBytes, formatDuration } from '../../core/duration.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { summarize } from './analyze/stats.js';
 import { launchBrowser } from './capture/browser.js';
+import { readSitemap, RouteQueue } from './discover/routes.js';
 import { measureRoute } from './measure.js';
-import { assignRouteSlugs } from './report/paths.js';
+import { createSlugAllocator } from './report/paths.js';
 import { toReportableSettings } from './settings.js';
 import { buildTrace, pickRepresentativeLoad, renderTraceTree } from './trace/hop-tree.js';
+
+const SITEMAP_TIMEOUT_MS = 10_000;
+
+/**
+ * @typedef {object} RouteResult
+ * @property {string} url
+ * @property {string} slug Folder name under perf/routes/.
+ * @property {number} depth
+ * @property {'seed' | 'sitemap' | 'link'} source
+ * @property {import('./measure.js').RouteMeasurement} measurement
+ * @property {import('./trace/hop-tree.js').Trace | null} trace From the representative load.
+ * @property {number | null} representativeRun
+ */
 
 /**
  * Runs the performance module end to end.
@@ -24,6 +38,10 @@ export async function runPerf(settings, runtime) {
     `Plan     ${settings.runs} cold run(s)${settings.warmRuns ? ` + ${settings.warmRuns} warm` : ''} per route, ` +
       `${settings.device}, throttle ${settings.throttle}, timeout ${formatDuration(settings.timeoutMs)}`,
   );
+  logger.info(
+    `Routes   up to ${settings.maxRoutes}, crawl depth ${settings.depth}, sitemap ${settings.sitemap ? 'on' : 'off'}` +
+      (settings.storageStatePath ? ', signed in via storage state' : ''),
+  );
 
   const runDirectory = await createRunDirectory({
     outputDir: runtime.outputDir,
@@ -39,44 +57,40 @@ export async function runPerf(settings, runtime) {
     return;
   }
 
-  const routes = settings.routes.length > 0 ? settings.routes : [settings.targetUrl.href];
-  const slugs = assignRouteSlugs(routes);
+  const queue = await seedRouteQueue(settings, logger);
+  const allocateSlug = createSlugAllocator();
+  /** @type {RouteResult[]} */
+  const results = [];
   const { browser, devices } = await launchBrowser(settings);
 
   try {
     logger.info('');
-    for (const url of routes) {
-      const measurement = await measureRoute({ browser, devices, settings, url });
-      const slug = /** @type {string} */ (slugs.get(url));
-      const routeDirectory = join(perfDirectory, 'routes', slug);
-      await mkdir(routeDirectory, { recursive: true });
-      await writeJsonFile(join(routeDirectory, 'loads.json'), measurement.loads);
-      if (measurement.screenshot) {
-        await writeFile(join(routeDirectory, 'screenshot.png'), measurement.screenshot);
+    for (let route = queue.next(); route; route = queue.next()) {
+      const measurement = await measureRoute({ browser, devices, settings, url: route.url });
+      if (route.depth < settings.depth) {
+        for (const link of measurement.links) queue.add(link, route.depth + 1, 'link');
       }
-      logger.info(formatRouteLine(measurement, logger.paint));
 
-      const representative = pickRepresentativeLoad(measurement.loads);
-      if (representative) {
-        const trace = buildTrace(representative.requests, representative.finalUrl ?? url);
-        await writeJsonFile(join(routeDirectory, 'trace.json'), {
-          representativeRun: representative.run,
-          ...trace,
-        });
-        await writeFile(
-          join(routeDirectory, 'trace.txt'),
-          `${renderTraceTree(trace).join('\n')}\n`,
+      const slug = allocateSlug(route.url);
+      const result = await writeRouteArtifacts({
+        perfDirectory,
+        slug,
+        route,
+        measurement,
+      });
+      results.push(result);
+      logger.info(formatRouteLine(measurement, logger.paint));
+      const longest = result.trace?.chains[0];
+      if (longest) {
+        logger.info(
+          logger.paint.dim(
+            `      ↳ sequential API chain: ${longest.ids.length} calls, ${formatDuration(longest.totalMs)}`,
+          ),
         );
-        const [longest] = trace.chains;
-        if (longest) {
-          logger.info(
-            logger.paint.dim(
-              `      ↳ sequential API chain: ${longest.ids.length} calls, ${formatDuration(longest.totalMs)}`,
-            ),
-          );
-        }
+      }
+      if (result.trace) {
         logger.debug(
-          `Hop tree for ${url}:\n${renderTraceTree(trace, { maxNodes: 25 }).join('\n')}`,
+          `Hop tree for ${route.url}:\n${renderTraceTree(result.trace, { maxNodes: 25 }).join('\n')}`,
         );
       }
     }
@@ -84,8 +98,93 @@ export async function runPerf(settings, runtime) {
     await browser.close();
   }
 
+  await writeJsonFile(join(perfDirectory, 'routes.json'), {
+    measured: results.map(({ url, slug, depth, source }) => ({ url, slug, depth, source })),
+    skipped: queue.skipped,
+  });
+
   logger.info('');
+  const skipped = Object.entries(queue.skipped)
+    .map(([reason, count]) => `${count} ${reason}`)
+    .join(', ');
+  logger.info(
+    `Measured ${results.length} route(s)${skipped ? logger.paint.dim(` · skipped: ${skipped}`) : ''}`,
+  );
   logger.success(`Report directory: ${perfDirectory}`);
+}
+
+/**
+ * Seeds the queue with explicit routes (or the target) and, when enabled, the sitemap.
+ *
+ * @param {import('./settings.js').PerfSettings} settings
+ * @param {import('../../core/logger.js').Logger} logger
+ * @returns {Promise<RouteQueue>}
+ */
+async function seedRouteQueue(settings, logger) {
+  const queue = new RouteQueue({
+    targetUrl: settings.targetUrl,
+    exclude: settings.exclude,
+    maxRoutes: settings.maxRoutes,
+  });
+  const seeds = settings.routes.length > 0 ? settings.routes : [settings.targetUrl.href];
+  for (const seed of seeds) queue.add(seed, 0, 'seed');
+
+  if (settings.sitemap) {
+    const sitemap = await readSitemap({
+      targetUrl: settings.targetUrl,
+      headers: settings.headers,
+      timeoutMs: Math.min(SITEMAP_TIMEOUT_MS, settings.timeoutMs),
+    });
+    if (sitemap.error) logger.warn(`Could not read sitemap.xml: ${sitemap.error}`);
+    let added = 0;
+    for (const url of sitemap.urls) {
+      // Sitemap routes are measured but not crawled further.
+      if (queue.add(url, settings.depth, 'sitemap')) added += 1;
+    }
+    if (sitemap.urls.length > 0) {
+      logger.debug(`sitemap.xml listed ${sitemap.urls.length} URL(s); queued ${added}`);
+    }
+  }
+  return queue;
+}
+
+/**
+ * @param {object} options
+ * @param {string} options.perfDirectory
+ * @param {string} options.slug
+ * @param {import('./discover/routes.js').QueuedRoute} options.route
+ * @param {import('./measure.js').RouteMeasurement} options.measurement
+ * @returns {Promise<RouteResult>}
+ */
+async function writeRouteArtifacts({ perfDirectory, slug, route, measurement }) {
+  const routeDirectory = join(perfDirectory, 'routes', slug);
+  await mkdir(routeDirectory, { recursive: true });
+  await writeJsonFile(join(routeDirectory, 'loads.json'), measurement.loads);
+  if (measurement.screenshot) {
+    await writeFile(join(routeDirectory, 'screenshot.png'), measurement.screenshot);
+  }
+
+  const representative = pickRepresentativeLoad(measurement.loads);
+  const trace = representative
+    ? buildTrace(representative.requests, representative.finalUrl ?? route.url)
+    : null;
+  if (representative && trace) {
+    await writeJsonFile(join(routeDirectory, 'trace.json'), {
+      representativeRun: representative.run,
+      ...trace,
+    });
+    await writeFile(join(routeDirectory, 'trace.txt'), `${renderTraceTree(trace).join('\n')}\n`);
+  }
+
+  return {
+    url: route.url,
+    slug,
+    depth: route.depth,
+    source: route.source,
+    measurement,
+    trace,
+    representativeRun: representative?.run ?? null,
+  };
 }
 
 /**
@@ -96,19 +195,22 @@ export async function runPerf(settings, runtime) {
 function formatRouteLine(measurement, paint) {
   const cold = measurement.loads.filter((load) => load.cache === 'cold');
   const failed = cold.filter((load) => load.error !== null);
-  const path = new URL(measurement.url).pathname;
+  const url = new URL(measurement.url);
+  const path = `${url.pathname}${url.search}`;
   if (failed.length === cold.length) {
     return `  ${paint.red('✖')} ${path}  ${paint.red(failed[0]?.error ?? 'failed')}`;
   }
+  const status = cold.find((load) => load.status !== null)?.status ?? null;
   const p50 = (/** @type {Array<number | null | undefined>} */ values) => summarize(values)?.p50;
   const ttfb = p50(cold.map((load) => load.vitals?.ttfbMs));
   const lcp = p50(cold.map((load) => load.vitals?.lcpMs));
   const requests = p50(cold.map((load) => load.requests.length));
   const bytes = p50(cold.map((load) => sumTransfer(load)));
+  const icon = status !== null && status >= 400 ? paint.yellow('!') : paint.green('✔');
   return (
-    `  ${paint.green('✔')} ${path}  ` +
+    `  ${icon} ${path}  ` +
     paint.dim(
-      `TTFB ${fmt(ttfb, formatDuration)} · LCP ${fmt(lcp, formatDuration)} · ` +
+      `${status ?? '–'} · TTFB ${fmt(ttfb, formatDuration)} · LCP ${fmt(lcp, formatDuration)} · ` +
         `${requests ?? '–'} requests · ${fmt(bytes, formatBytes)}`,
     )
   );
