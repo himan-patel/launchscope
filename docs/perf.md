@@ -11,6 +11,7 @@ into CI.
 - [How a run works](#how-a-run-works)
 - [Reading the report](#reading-the-report)
 - [Bottleneck rules](#bottleneck-rules)
+- [Comparing with a baseline](#comparing-with-a-baseline)
 - [Stress testing](#stress-testing)
 - [Options reference](#options-reference)
 - [Configuration file](#configuration-file)
@@ -58,7 +59,7 @@ By default this:
 4. prints a summary and writes a report directory.
 
 ```text
-▲ launchscope v0.2.0
+▲ launchscope v0.3.0
   Launch-readiness checks for web apps
 
 Target   http://localhost:3000/ (loopback)
@@ -279,20 +280,32 @@ launchscope perf http://localhost:3000 --config launchscope.config.json --dry-ru
 
 1. **Settings** are merged from CLI flags, then the `perf` section of `launchscope.config.json`,
    then defaults. Everything is validated before any work starts; unknown config keys are errors.
-2. **Routes** are discovered breadth-first: explicit routes (or the target), `sitemap.xml`
-   entries, then links found on measured pages, up to `--depth` and `--max-routes`. Links rendered
-   by JavaScript count, because they are read from the live page.
+   Stress-test safety, the `--baseline` file, and the optional Lighthouse package are checked
+   here too, so problems surface before any page is loaded.
+2. **Routes** are discovered breadth-first: explicit routes (or the target), routes found in the
+   repository (`--repo`), `sitemap.xml` entries, then links found on measured pages, up to
+   `--depth` and `--max-routes`. Links rendered by JavaScript count, because they are read from
+   the live page.
 3. **Measurement**: each cold run uses a fresh browser context (empty cache, cookies from
    `--storage-state` only, new connections). The Chrome DevTools Protocol records every request:
-   timing phases, compressed and decoded sizes, initiator, redirects, cache status, and selected
-   response headers. Web Vitals are collected inside the page. A load ends when the network has
-   been idle for 500 ms (at most 10 s after the `load` event), so late API calls are included.
+   timing phases, compressed and decoded sizes, initiator, redirects, cache status, selected
+   response headers, GraphQL operations, WebSockets, and iframe requests. Web Vitals are
+   collected inside the page. A load ends when the network has been idle for 500 ms (at most
+   10 s after the `load` event; long-lived streams do not count), so late API calls are included.
+   Each route is folded into the analysis as soon as it is measured.
 4. **Tracing**: the run closest to the median is used to build the hop tree, sequential API
    chains, and the critical path.
-5. **Analysis**: distributions per route, statistics per endpoint across all routes, and
-   bottleneck rules against your budgets.
-6. **Stress test** (with `--stress`): routes are replayed by virtual users at rising concurrency.
-7. **Report**: JSON, CSV, Markdown, SVG, HAR, and the HTML report are written.
+5. **Direct API measurement** (`--openapi`, `--repo`): GET operations from the spec or the source
+   are called over HTTP and join the endpoint statistics.
+6. **Navigations** (`--spa`): links between measured routes are clicked like a user and each
+   client-side transition is measured.
+7. **Other browsers and Lighthouse** (`--browsers`, `--lighthouse`): routes are loaded in Firefox
+   or WebKit and audited with Lighthouse.
+8. **Analysis**: distributions per route, statistics per endpoint across all routes, bottleneck
+   rules against your budgets, and regressions against `--baseline`.
+9. **Stress test** (`--stress`): routes are replayed at rising concurrency (closed model) or
+   arrival rate (open model); `--export-k6` writes the same scenarios as a k6 script.
+10. **Report**: JSON, CSV, Markdown, SVG, HAR, and the HTML report are written.
 
 **Stopping early.** Press Ctrl+C (or send SIGTERM, as CI does when a job is cancelled) at any
 point: the route being measured is abandoned, the routes already measured are analyzed and
@@ -526,31 +539,32 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 
 ### `launchscope perf <target>`
 
-| Option                         | Default                          | Description                                                                 |
-| ------------------------------ | -------------------------------- | --------------------------------------------------------------------------- |
-| `-r, --routes <paths>`         | –                                | Comma-separated routes to measure, e.g. `/,/pricing`                        |
-| `--max-routes <n>`             | 10                               | Maximum routes to measure (1–500)                                           |
-| `--depth <n>`                  | 1 (0 with `--routes`)            | Link-crawl depth from the seeds (0–5)                                       |
-| `--no-sitemap`                 | sitemap on (off with `--routes`) | Do not read `/sitemap.xml`                                                  |
-| `--exclude <regex>`            | –                                | Skip URLs matching the pattern (repeatable, case-insensitive)               |
-| `-n, --runs <n>`               | 3                                | Cold-cache runs per route (1–50)                                            |
-| `--warm-runs <n>`              | 0                                | Extra warm-cache runs per route (0–20)                                      |
-| `--device <profile>`           | desktop                          | `desktop` (1366×768) or `mobile` (Pixel 7, 4× CPU slowdown)                 |
-| `--throttle <profile>`         | none                             | `none`, `4g`, or `3g`                                                       |
-| `--timeout <duration>`         | 30s                              | Page load timeout, e.g. `45s`, `2m`, `500ms`                                |
-| `--browser-channel <name>`     | bundled Chromium                 | Use an installed browser: `chrome`, `msedge`, …                             |
-| `--headed`                     | off                              | Show the browser window                                                     |
-| `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                      |
-| `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                |
-| `--stress`                     | off                              | Stress test after measuring                                                 |
-| `--stress-stages <list>`       | 1,5,10,25,50                     | Concurrent users per stage, strictly increasing (max 10 stages, 1000 users) |
-| `--stress-duration <duration>` | 10s                              | Duration of each stage                                                      |
-| `--stress-timeout <duration>`  | 10s                              | Per-request timeout under stress                                            |
-| `--stress-include-assets`      | off                              | Also replay same-origin scripts, styles, images, fonts                      |
-| `--allow-remote`               | off                              | Allow stress testing a public host you own                                  |
-| `--json`                       | off                              | Print the summary JSON to stdout                                            |
-| `--dry-run`                    | off                              | Validate options and config, write settings, no browser                     |
-| `--fail-on <level>`            | none                             | Exit 1 if a finding at `warning` or `critical` (or worse) exists            |
+| Option                         | Default                          | Description                                                                                           |
+| ------------------------------ | -------------------------------- | ----------------------------------------------------------------------------------------------------- |
+| `-r, --routes <paths>`         | –                                | Comma-separated routes to measure, e.g. `/,/pricing`                                                  |
+| `--max-routes <n>`             | 10                               | Maximum routes to measure (1–500)                                                                     |
+| `--depth <n>`                  | 1 (0 with `--routes`)            | Link-crawl depth from the seeds (0–5)                                                                 |
+| `--no-sitemap`                 | sitemap on (off with `--routes`) | Do not read `/sitemap.xml`                                                                            |
+| `--exclude <regex>`            | –                                | Skip URLs matching the pattern (repeatable, case-insensitive)                                         |
+| `-n, --runs <n>`               | 3                                | Cold-cache runs per route (1–50)                                                                      |
+| `--warm-runs <n>`              | 0                                | Extra warm-cache runs per route (0–20)                                                                |
+| `--device <profile>`           | desktop                          | `desktop` (1366×768) or `mobile` (Pixel 7, 4× CPU slowdown)                                           |
+| `--throttle <profile>`         | none                             | `none`, `4g`, or `3g`                                                                                 |
+| `--timeout <duration>`         | 30s                              | Page load timeout, e.g. `45s`, `2m`, `500ms`                                                          |
+| `--browser-channel <name>`     | bundled Chromium                 | Use an installed browser: `chrome`, `msedge`, …                                                       |
+| `--headed`                     | off                              | Show the browser window                                                                               |
+| `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                                                |
+| `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                                          |
+| `--stress`                     | off                              | Stress test after measuring                                                                           |
+| `--stress-stages <list>`       | 1,5,10,25,50                     | Concurrent users per stage, strictly increasing (max 10 stages, 1000 users)                           |
+| `--stress-duration <duration>` | 10s                              | Duration of each stage                                                                                |
+| `--stress-timeout <duration>`  | 10s                              | Per-request timeout under stress                                                                      |
+| `--stress-include-assets`      | off                              | Also replay same-origin scripts, styles, images, fonts                                                |
+| `--stress-replay <regex>`      | –                                | Also replay same-origin POST/PUT/PATCH requests whose path matches, with recorded bodies (repeatable) |
+| `--allow-remote`               | off                              | Allow stress testing a public host you own                                                            |
+| `--json`                       | off                              | Print the summary JSON to stdout                                                                      |
+| `--dry-run`                    | off                              | Validate options and config, write settings, no browser                                               |
+| `--fail-on <level>`            | none                             | Exit 1 if a finding at `warning` or `critical` (or worse) exists                                      |
 
 Global options (`--config`, `--output-dir`, `--no-color`, `--quiet`, `--verbose`) go before the
 command name, e.g. `launchscope --verbose perf http://localhost:3000`. `--verbose` prints each

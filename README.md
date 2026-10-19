@@ -14,7 +14,7 @@
   <a href="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml"><img src="https://github.com/himan-patel/launchscope/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT license"></a>
   <img src="https://img.shields.io/badge/node-%3E%3D22.12-339933.svg" alt="Node.js 22.12 or newer">
-  <img src="https://img.shields.io/badge/version-0.2.0-4f46e5.svg" alt="Version 0.2.0">
+  <img src="https://img.shields.io/badge/version-0.3.0-4f46e5.svg" alt="Version 0.3.0">
 </p>
 
 ---
@@ -42,23 +42,30 @@ Bottlenecks · 1 critical, 3 warning, 2 info
 
 ## What it does
 
-- **Measures every route in a real browser.** Discovers routes from your sitemap and links (or
-  takes a list), loads each one several times with a cold cache, and records Web Vitals (TTFB,
-  FCP, LCP, CLS, TBT) plus every request: DNS, connect, TLS, server wait, and download times,
-  compressed and decoded sizes, status, and caching.
+- **Measures every route in a real browser.** Discovers routes from your sitemap, links, source
+  code (Next.js, SvelteKit, Nuxt, Astro, Remix, Angular, React Router), or a list; loads each one
+  several times with a cold cache; and records Web Vitals (TTFB, FCP, LCP, CLS, TBT) plus every
+  request: DNS, connect, TLS, server wait, and download times, sizes, status, and caching.
 - **Traces every hop.** Builds each page's request tree (document → scripts → API calls), detects
-  API calls that wait on each other, follows redirects, reads `Server-Timing` for backend hops,
-  and finds the critical path that decides when the page is done.
+  API calls that wait on each other, follows redirects, splits GraphQL by operation, tracks
+  WebSockets, streams, and iframes, reads `Server-Timing`, and can send W3C `traceparent` headers
+  so your tracing backend shows the database and service calls behind each page load.
+- **Covers what pages don't call.** Measures GET endpoints from your OpenAPI spec or your routes
+  directly, and measures client-side navigations in single-page apps the way users click.
 - **Finds bottlenecks from real numbers.** Slow and unstable endpoints, oversized and
-  uncompressed payloads, duplicate calls, sequential API waterfalls, heavy pages, failing calls,
-  missing caching, and Web Vitals over budget, each with evidence and a recommendation.
-- **Stress tests the routes.** Replays each route's API calls in their real order with rising
-  concurrency and reports the latency knee, the hop that degrades first, the throughput plateau,
-  and the breaking point. Local and private targets only unless you opt in.
+  uncompressed payloads, duplicate calls, sequential API waterfalls, slow navigations, heavy
+  pages, failing calls, missing caching, Web Vitals over budget, and regressions against a
+  previous run, each with evidence and a recommendation.
+- **Stress tests the routes.** Replays each route's requests in their real order with rising
+  concurrency or a fixed arrival rate and reports the latency knee, the hop that degrades first,
+  capacity, and the breaking point. Local and private targets only unless you opt in; exports k6
+  scripts for bigger tests.
+- **Checks other browsers and Lighthouse.** Optional Firefox/WebKit comparison and Lighthouse
+  scores per route.
 - **Writes a report you can share.** A self-contained HTML report with waterfalls and charts,
   plus JSON, CSV, Markdown, SVG, and redacted HAR files, organized per run.
-- **Fits CI.** `--fail-on critical` exits 1, `--json` prints the summary, and budgets live in a
-  config file.
+- **Fits CI.** `--fail-on`, `--baseline latest`, `--json`, budgets and a JSON Schema for the
+  config file, graceful Ctrl+C/SIGTERM, and tests on Linux, macOS, and Windows.
 
 ## Quick start
 
@@ -78,6 +85,8 @@ Then, with your app running:
 launchscope perf http://localhost:3000                         # discover and measure routes
 launchscope perf http://localhost:3000 --routes /,/dashboard   # just these routes
 launchscope perf http://localhost:3000 --stress                # add a stress test
+launchscope perf http://localhost:3000 --spa --repo .          # client-side navigations + routes from source
+launchscope perf http://localhost:3000 --baseline latest --fail-on warning   # catch regressions in CI
 launchscope login https://staging.example.com/login            # sign in once…
 launchscope perf https://staging.example.com --storage-state .auth/session.json  # …measure signed in
 ```
@@ -97,8 +106,9 @@ launchscope-reports/<host>_<timestamp>/perf/
 ├── summary.md      Markdown summary for PRs and tickets
 ├── summary.json    everything, machine-readable
 ├── routes.csv · endpoints.csv · bottlenecks.json · endpoints.json
-├── routes/<route>/ screenshot, waterfall.svg, trace (hop tree), loads, redacted HAR
-└── stress/         stages, per-hop stats, latency and throughput charts
+├── routes/<route>/ screenshot, waterfall.svg, trace (hop tree), loads, redacted HAR, Lighthouse
+├── navigations.json · browsers.json · openapi.json · repo.json   (when those features are used)
+└── stress/         stages, per-hop stats, charts, k6 script
 ```
 
 ## Principles
