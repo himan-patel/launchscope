@@ -34,12 +34,14 @@ test/                     End-to-end tests that run the real CLI binary against 
 ```text
 src/modules/perf/
 ├── index.js              Registers `launchscope perf <target>` and its options.
+├── api-command.js        Registers `launchscope api <target>`: the same run without a browser.
+├── cli-options.js        Option helpers shared by both commands.
 ├── settings.js           CLI > config > defaults, validated at the trust boundary.
 ├── run.js                Orchestrates safety checks → measurement → analysis → stress → report.
 ├── measure-routes.js     Route queue loop: measure, write route files, fold into the analysis.
 ├── measure.js            Cold and warm runs of one route, each in a fresh browser context.
 ├── measure-api.js        Direct HTTP measurement of API operations (resource timing).
-├── api-phase.js          OpenAPI and repository API operations → endpoint statistics.
+├── api-phase.js          Listed, OpenAPI, and repository API operations → endpoint statistics.
 ├── navigation-phase.js   Client-side navigation pairs, runs, findings (--spa).
 ├── cross-browser-phase.js  Firefox/WebKit loads compared with Chromium (--browsers).
 ├── lighthouse-phase.js   Optional Lighthouse audits (--lighthouse).

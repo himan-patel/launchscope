@@ -2,7 +2,7 @@ import { mkdir, writeFile } from 'node:fs/promises';
 import { join, resolve } from 'node:path';
 import { BRAND } from '../../core/brand.js';
 import { formatDuration } from '../../core/duration.js';
-import { ExitCode, LaunchScopeError } from '../../core/errors.js';
+import { ExitCode, LaunchScopeError, UsageError } from '../../core/errors.js';
 import { createInterruptController, INTERRUPTED_EXIT_CODE } from '../../core/interrupt.js';
 import { createRunDirectory, writeJsonFile } from '../../core/report-dir.js';
 import { SEVERITY_ORDER, sortFindings } from './analyze/bottlenecks.js';
@@ -64,6 +64,7 @@ export async function runPerf(settings, runtime) {
         reference: settings.baseline,
         outputDirectory: resolve(io.cwd, runtime.outputDir),
         currentRunDirectory: runDirectory,
+        mode: settings.mode,
       })
     : null;
   if (baseline) {
@@ -123,14 +124,17 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
         logger.paint.dim(repo.skipped.length ? ` · ${repo.skipped.length} need routeParams` : ''),
     );
   }
-  const { routes, skipped } = await measureRoutes({
-    settings,
-    logger,
-    perfDirectory,
-    signal,
-    accumulator,
-    repoRoutes: repo?.pages ?? [],
-  });
+  const { routes, skipped } =
+    settings.mode === 'api'
+      ? { routes: [], skipped: {} }
+      : await measureRoutes({
+          settings,
+          logger,
+          perfDirectory,
+          signal,
+          accumulator,
+          repoRoutes: repo?.pages ?? [],
+        });
   const api = await runApiPhase({
     settings,
     logger,
@@ -139,20 +143,29 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     accumulator,
     repoApis: repo?.apis ?? [],
   });
+  if (settings.mode === 'api' && !signal.aborted && (api?.operations.length ?? 0) === 0) {
+    throw new UsageError('No API endpoints to measure.', {
+      hint: settings.openapi
+        ? 'The OpenAPI spec had no callable GET operations. List endpoints with --endpoint "/api/health".'
+        : 'List endpoints with --endpoint "/api/health" or point --openapi at a spec.',
+    });
+  }
   const navigation =
     settings.spa && !signal.aborted
       ? await runNavigationPhase({ settings, routes, perfDirectory, logger, signal })
       : null;
   const analysis = accumulator.finish(settings.budgets);
-  const verification = repo
-    ? verifyRepoRoutes({
-        repo,
-        routes: analysis.routes,
-        endpoints: analysis.endpoints,
-        targetUrl: settings.targetUrl,
-        exclude: settings.exclude,
-      })
-    : null;
+  // Page routes are not loaded in API mode, so they cannot be verified.
+  const verification =
+    repo && settings.mode === 'pages'
+      ? verifyRepoRoutes({
+          repo,
+          routes: analysis.routes,
+          endpoints: analysis.endpoints,
+          targetUrl: settings.targetUrl,
+          exclude: settings.exclude,
+        })
+      : null;
   if (repo && verification) {
     await writeJsonFile(join(perfDirectory, 'repo.json'), { ...repo, verification });
     const { counts } = verification;
@@ -206,7 +219,8 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
   const comparison = baseline
     ? compareRuns({
         current: { routes: analysis.routes, endpoints: analysis.endpoints },
-        baseline: baseline.summary,
+        // An API run has no routes; comparing them would list every baseline route as missing.
+        baseline: settings.mode === 'api' ? { ...baseline.summary, routes: [] } : baseline.summary,
         baselinePath: baseline.path,
       })
     : null;
@@ -225,6 +239,7 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     schemaVersion: 1,
     tool: { name: BRAND.command, version: BRAND.version },
     target: settings.targetUrl.href,
+    mode: settings.mode,
     startedAt: startedAt.toISOString(),
     finishedAt: new Date().toISOString(),
     interrupted: signal.aborted,
@@ -280,8 +295,10 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
     .map(([reason, count]) => `${count} ${reason}`)
     .join(', ');
   logger.info(
-    `Measured ${routes.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
-      (skippedText ? logger.paint.dim(` · skipped: ${skippedText}`) : ''),
+    settings.mode === 'api'
+      ? `Measured ${analysis.endpoints.length} endpoint(s), ${settings.runs} run(s) each`
+      : `Measured ${routes.length} route(s), ${analysis.endpoints.length} endpoint(s)` +
+          (skippedText ? logger.paint.dim(` · skipped: ${skippedText}`) : ''),
   );
   if (comparison) {
     logger.info(

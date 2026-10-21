@@ -1,20 +1,13 @@
 import { Option } from 'commander';
+import { registerApi } from './api-command.js';
+import { collect, onlyExplicitOptions } from './cli-options.js';
 import { PERF_DEFAULTS, resolvePerfSettings } from './settings.js';
 import { runPerf } from './run.js';
 
 /** @typedef {import('./settings.js').PerfCliOptions} PerfCliOptions */
 
 /**
- * Collects a repeatable option into an array.
- *
- * @param {string} value
- * @param {string[] | undefined} previous
- * @returns {string[]}
- */
-const collect = (value, previous) => [...(previous ?? []), value];
-
-/**
- * Registers `launchscope perf <target>`.
+ * Registers `launchscope perf <target>` and its browserless sibling, `launchscope api <target>`.
  *
  * @param {import('commander').Command} program
  * @param {import('../registry.js').ModuleServices} services
@@ -27,6 +20,11 @@ export function registerPerf(program, services) {
     .optionsGroup('Routes:')
     .option('-r, --routes <paths>', 'comma-separated routes to measure, e.g. /,/pricing,/app')
     .option('--max-routes <n>', `maximum routes to measure (default: ${PERF_DEFAULTS.maxRoutes})`)
+    .option(
+      '--endpoint <path>',
+      'also measure this GET API endpoint directly, e.g. /api/health (repeatable)',
+      collect,
+    )
     .option(
       '--openapi <spec>',
       'also measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file',
@@ -124,18 +122,6 @@ export function registerPerf(program, services) {
         await runPerf(settings, runtime);
       },
     );
-}
 
-/**
- * Keeps only options the user actually passed. Commander gives negatable flags such as
- * `--no-sitemap` an implicit default of true, which would otherwise override config values.
- *
- * @param {PerfCliOptions} options
- * @param {import('commander').Command} command
- * @returns {PerfCliOptions}
- */
-function onlyExplicitOptions(options, command) {
-  return Object.fromEntries(
-    Object.entries(options).filter(([name]) => command.getOptionValueSource(name) === 'cli'),
-  );
+  registerApi(program, services);
 }

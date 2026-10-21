@@ -3,8 +3,8 @@ import { BRAND } from '../../core/brand.js';
 import { describeJsonShape } from './capture/network-recorder.js';
 
 /**
- * Measures API operations directly over HTTP (no browser), for endpoints found in an OpenAPI
- * document. Each operation is called `runs` times, sequentially, with the target-origin headers
+ * Measures API operations directly over HTTP (no browser), for endpoints that are listed, found
+ * in an OpenAPI document, or found in the repository. Each operation is called `runs` times, sequentially, with the target-origin headers
  * and session cookies the browser measurements use. Timing comes from Node's Resource Timing
  * entries for `fetch`; Node reports DNS, connect, and TLS as one interval, so they are recorded
  * together as `connectMs`.

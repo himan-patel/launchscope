@@ -56,6 +56,10 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {import('./analyze/budgets.js').Budgets} budgets Thresholds for findings.
  * @property {string | undefined} baseline 'latest' or an absolute path to a previous run to compare with.
  * @property {{ enabled: boolean, urlTemplate: string | undefined }} traceContext W3C traceparent on target-origin requests.
+ * @property {'pages' | 'api'} mode `pages`: measure routes in a browser (`launchscope perf`). `api`:
+ *   call API endpoints directly, without a browser (`launchscope api`).
+ * @property {import('./discover/openapi.js').ApiOperation[]} endpoints Endpoints listed with
+ *   `--endpoint` or `perf.endpoints`, measured directly over HTTP.
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
@@ -96,6 +100,7 @@ export const LIMITS = Object.freeze({
   warmRuns: 20,
   stressStages: 10,
   stressConcurrency: 1000,
+  endpoints: 100,
 });
 
 const DEVICES = /** @type {const} */ (['desktop', 'mobile']);
@@ -131,6 +136,7 @@ export const CONFIG_KEYS = new Set([
   'budgets',
   'baseline',
   'traceContext',
+  'endpoints',
   'openapi',
   'repo',
   'routeParams',
@@ -179,6 +185,7 @@ export const STRESS_CONFIG_KEYS = new Set([
  * @property {string} [baseline]
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
+ * @property {string[]} [endpoint]
  * @property {string} [openapi]
  * @property {string} [repo]
  * @property {boolean} [spa]
@@ -204,19 +211,27 @@ export const STRESS_CONFIG_KEYS = new Set([
  * @param {PerfCliOptions} input.cli
  * @param {unknown} input.config The `perf` section of launchscope.config.json, if any.
  * @param {string} input.cwd
+ * @param {'pages' | 'api'} [input.mode] `api` for `launchscope api`: no browser, no page routes.
  * @returns {PerfSettings}
  */
-export function resolvePerfSettings({ target, cli, config, cwd }) {
+export function resolvePerfSettings({ target, cli, config, cwd, mode = 'pages' }) {
   const section = readSection(config, 'perf', CONFIG_KEYS);
   const stressSection = readSection(section.stress, 'perf.stress', STRESS_CONFIG_KEYS);
   const { url: targetUrl, scope } = parseTarget(target);
 
-  const routes = parseRoutes(cli.routes ?? section.routes, targetUrl);
+  const routes = mode === 'api' ? [] : parseRoutes(cli.routes ?? section.routes, targetUrl);
+  const endpoints = parseEndpoints(cli.endpoint ?? section.endpoints, targetUrl);
+  const repo = resolveRepo(cli.repo ?? section.repo, cwd);
+  // With nothing listed, `launchscope api` looks for a spec at the usual locations.
+  const openapi =
+    resolveOpenApi(cli.openapi ?? section.openapi, cwd) ??
+    (mode === 'api' && endpoints.length === 0 && repo === undefined ? 'auto' : undefined);
   const storageState = cli.storageState ?? optionalString(section.storageState, 'storageState');
 
   return {
     targetUrl,
     scope,
+    mode,
     routes,
     maxRoutes: parseInteger(cli.maxRoutes ?? section.maxRoutes, '--max-routes', {
       min: 1,
@@ -228,7 +243,9 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
       max: LIMITS.depth,
       fallback: routes.length > 0 ? 0 : PERF_DEFAULTS.depth,
     }),
-    sitemap: parseBoolean(cli.sitemap ?? section.sitemap, 'sitemap', routes.length === 0),
+    sitemap:
+      mode === 'pages' &&
+      parseBoolean(cli.sitemap ?? section.sitemap, 'sitemap', routes.length === 0),
     exclude: parsePatterns(cli.exclude ?? section.exclude),
     runs: parseInteger(cli.runs ?? section.runs, '--runs', {
       min: 1,
@@ -260,20 +277,22 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
     json: cli.json ?? false,
     dryRun: cli.dryRun ?? false,
     exportK6: parseBoolean(cli.exportK6 ?? section.exportK6, 'exportK6', false),
-    lighthouse: parseBoolean(cli.lighthouse ?? section.lighthouse, 'lighthouse', false),
+    lighthouse:
+      mode === 'pages' && parseBoolean(cli.lighthouse ?? section.lighthouse, 'lighthouse', false),
     budgets: resolveBudgets(section.budgets),
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),
-    openapi: resolveOpenApi(cli.openapi ?? section.openapi, cwd),
-    repo: resolveRepo(cli.repo ?? section.repo, cwd),
+    endpoints,
+    openapi,
+    repo,
     routeParams: parseRouteParams(section.routeParams),
-    spa: parseBoolean(cli.spa ?? section.spa, 'spa', false),
+    spa: mode === 'pages' && parseBoolean(cli.spa ?? section.spa, 'spa', false),
     spaMax: parseInteger(cli.spaMax ?? section.spaMax, '--spa-max', {
       min: 1,
       max: 100,
       fallback: 20,
     }),
-    browsers: parseBrowsers(cli.browsers ?? section.browsers),
+    browsers: mode === 'pages' ? parseBrowsers(cli.browsers ?? section.browsers) : ['chromium'],
     stress: {
       enabled: cli.stress ?? false,
       stages: parseStages(cli.stressStages ?? stressSection.stages),
@@ -287,11 +306,13 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
         '--stress-timeout',
         PERF_DEFAULTS.stress.requestTimeoutMs,
       ),
-      includeAssets: parseBoolean(
-        cli.stressIncludeAssets ?? stressSection.includeAssets,
-        'stress.includeAssets',
-        PERF_DEFAULTS.stress.includeAssets,
-      ),
+      includeAssets:
+        mode === 'pages' &&
+        parseBoolean(
+          cli.stressIncludeAssets ?? stressSection.includeAssets,
+          'stress.includeAssets',
+          PERF_DEFAULTS.stress.includeAssets,
+        ),
       allowRemote: parseBoolean(
         cli.allowRemote ?? stressSection.allowRemote,
         'stress.allowRemote',
@@ -316,7 +337,8 @@ export function resolvePerfSettings({ target, cli, config, cwd }) {
 }
 
 /**
- * A copy of the settings that is safe to write into reports: header values are redacted.
+ * A copy of the settings that is safe to write into reports: header values and the query values
+ * of listed endpoints (which may carry keys or tokens) are redacted.
  *
  * @param {PerfSettings} settings
  */
@@ -324,6 +346,7 @@ export function toReportableSettings(settings) {
   return {
     ...settings,
     targetUrl: settings.targetUrl.href,
+    endpoints: settings.endpoints.map(({ url }) => redactQuery(url)),
     exclude: settings.exclude.map((pattern) => pattern.source),
     headers: Object.fromEntries(Object.keys(settings.headers).map((name) => [name, '[redacted]'])),
   };
@@ -379,6 +402,53 @@ function parseRoutes(value, targetUrl) {
     routes.add(url.href);
   }
   return [...routes];
+}
+
+/**
+ * Endpoints are `"/path"` or `"GET /path"` (paths or same-origin URLs). Only GET is accepted, so
+ * a listed endpoint can never write data.
+ *
+ * @param {unknown} value
+ * @param {URL} targetUrl
+ * @returns {import('./discover/openapi.js').ApiOperation[]}
+ */
+function parseEndpoints(value, targetUrl) {
+  if (value === undefined) return [];
+  const items = typeof value === 'string' ? [value] : value;
+  if (!Array.isArray(items) || !items.every((item) => typeof item === 'string')) {
+    throw new UsageError(
+      'Endpoints must be strings like "/api/health" or "GET /api/items?page=1".',
+    );
+  }
+  /** @type {Map<string, import('./discover/openapi.js').ApiOperation>} */
+  const endpoints = new Map();
+  for (const raw of items.map((item) => item.trim()).filter(Boolean)) {
+    const match = /^(?:([A-Za-z]+)\s+)?(\S+)$/.exec(raw);
+    if (!match) throw new UsageError(`Endpoint "${raw}" must look like "/path" or "GET /path".`);
+    const method = (match[1] ?? 'GET').toUpperCase();
+    if (method !== 'GET') {
+      throw new UsageError(`Endpoint "${raw}": only GET endpoints can be listed.`, {
+        hint: 'Write requests are never sent by --endpoint.',
+      });
+    }
+    let url;
+    try {
+      url = new URL(match[2], targetUrl);
+    } catch {
+      throw new UsageError(`Endpoint "${raw}" is not a valid path or URL.`);
+    }
+    if (url.origin !== targetUrl.origin) {
+      throw new UsageError(`Endpoint "${raw}" is not on the target origin ${targetUrl.origin}.`, {
+        hint: 'Headers and cookies are only sent to the target, so endpoints must be on it too.',
+      });
+    }
+    url.hash = '';
+    endpoints.set(url.href, { url: url.href, path: url.pathname, operationId: null });
+  }
+  if (endpoints.size > LIMITS.endpoints) {
+    throw new UsageError(`At most ${LIMITS.endpoints} endpoints can be listed.`);
+  }
+  return [...endpoints.values()];
 }
 
 /**
@@ -746,4 +816,16 @@ function parseRates(value) {
       throw new UsageError('Stress rates must be strictly increasing, e.g. 2,5,10.');
   }
   return rates;
+}
+
+/**
+ * @param {string} href
+ * @returns {string} The URL with every query value replaced by `[redacted]`.
+ */
+function redactQuery(href) {
+  const url = new URL(href);
+  const names = [...new Set(url.searchParams.keys())];
+  url.search = '';
+  for (const name of names) url.searchParams.append(name, '[redacted]');
+  return url.href.replaceAll('%5Bredacted%5D', '[redacted]');
 }

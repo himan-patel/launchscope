@@ -43,6 +43,8 @@ export function renderHtmlReport({ summary, details }) {
   );
   const stress = summary.stress;
   const host = new URL(summary.target).host;
+  // `launchscope api` runs load no pages, so page sections are left out.
+  const pages = summary.mode !== 'api';
 
   return `<!doctype html>
 <html lang="en">
@@ -58,12 +60,12 @@ export function renderHtmlReport({ summary, details }) {
 <header class="top">
   <div class="brand">${LOGO}<div><p class="eyebrow">${e(BRAND.name)} performance report</p><h1>${e(host)}</h1></div></div>
   <p class="meta">${e(summary.target)} · ${e(formatDate(summary.startedAt))} · ${e(describeSettings(summary.settings))}</p>
-  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a><a href="#routes">Routes</a><a href="#endpoints">Endpoints</a>${summary.repo?.verification ? '<a href="#repository">Repository</a>' : ''}${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${summary.lighthouse ? '<a href="#lighthouse">Lighthouse</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
+  <nav aria-label="Report sections"><a href="#summary">Summary</a><a href="#bottlenecks">Bottlenecks</a>${pages ? '<a href="#routes">Routes</a>' : ''}<a href="#endpoints">Endpoints</a>${summary.repo?.verification ? '<a href="#repository">Repository</a>' : ''}${summary.navigations ? '<a href="#navigations">Navigations</a>' : ''}${summary.browsers ? '<a href="#browsers">Browsers</a>' : ''}${summary.lighthouse ? '<a href="#lighthouse">Lighthouse</a>' : ''}${stress ? '<a href="#stress">Stress test</a>' : ''}${summary.comparison ? '<a href="#baseline">Baseline</a>' : ''}<a href="#method">Method</a></nav>
 </header>
 <main id="main">
 ${renderSummary(summary, routes)}
 ${renderFindings(findings)}
-${renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate)}
+${pages ? renderRoutes(routes, details, summary.settings.traceContext?.urlTemplate) : ''}
 ${renderEndpoints(endpoints, summary.openapi)}
 ${summary.repo?.verification ? renderRepository(summary.repo) : ''}
 ${summary.navigations ? renderNavigations(summary.navigations) : ''}
@@ -101,11 +103,13 @@ function renderSummary(summary, routes) {
     /** @type {import('../analyze/routes.js').RouteSummary | null} */ (null),
   );
   const tiles = [
-    tile(
-      'Routes measured',
-      String(summary.totals.routes),
-      `${summary.totals.pageLoads} page loads`,
-    ),
+    summary.mode === 'api'
+      ? ''
+      : tile(
+          'Routes measured',
+          String(summary.totals.routes),
+          `${summary.totals.pageLoads} page loads`,
+        ),
     tile(
       'Endpoints',
       String(summary.totals.endpoints),
@@ -420,6 +424,7 @@ function renderMethod() {
 
 /** @param {any} settings */
 function describeSettings(settings) {
+  if (settings.mode === 'api') return `${settings.runs} call(s) per endpoint, no browser`;
   return `${settings.runs} cold run(s)${settings.warmRuns ? ` + ${settings.warmRuns} warm` : ''}, ${settings.device}, throttle ${settings.throttle}`;
 }
 
@@ -629,12 +634,12 @@ function renderTraces(traces, template) {
 }
 
 /**
- * @param {Array<'page' | 'openapi' | 'repo'> | undefined} sources
+ * @param {Array<'page' | 'listed' | 'openapi' | 'repo'> | undefined} sources
  * @returns {string}
  */
 function sourceLabel(sources) {
   if (!sources || sources.length === 0) return 'page';
-  const names = { page: 'page', openapi: 'API spec', repo: 'repository' };
+  const names = { page: 'page', listed: 'listed', openapi: 'API spec', repo: 'repository' };
   const labels = sources.map((source) => names[source]);
   return sources.includes('page') ? labels.join(' + ') : `${labels.join(' + ')} only`;
 }

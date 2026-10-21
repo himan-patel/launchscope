@@ -15,9 +15,10 @@ const SPEC_TIMEOUT_MS = 10_000;
  */
 
 /**
- * Measures API endpoints directly over HTTP: GET operations from an OpenAPI document and GET
- * routes found in the repository (skipping any the spec already covers). Results are folded into
- * the endpoint statistics; the OpenAPI plan is written to `openapi.json`.
+ * Measures API endpoints directly over HTTP: endpoints listed with `--endpoint`, GET operations
+ * from an OpenAPI document, and GET routes found in the repository. A URL that is listed is not
+ * measured again for the spec, and repository routes the spec or list already cover are skipped.
+ * Results are folded into the endpoint statistics; the OpenAPI plan is written to `openapi.json`.
  *
  * @param {object} options
  * @param {import('./settings.js').PerfSettings} options.settings
@@ -36,11 +37,18 @@ export async function runApiPhase({
   accumulator,
   repoApis = [],
 }) {
-  if ((!settings.openapi && repoApis.length === 0) || signal.aborted) return null;
+  const listed = settings.endpoints;
+  if ((!settings.openapi && repoApis.length === 0 && listed.length === 0) || signal.aborted)
+    return null;
   const plan = settings.openapi ? await planFromSpec(settings, logger) : null;
-  const specOperations = plan?.operations ?? [];
+  const listedUrls = new Set(listed.map((operation) => operation.url));
+  const specOperations = (plan?.operations ?? []).filter(
+    (operation) => !listedUrls.has(operation.url),
+  );
 
-  const covered = new Set(specOperations.map((operation) => templateKey(operation.url)));
+  const covered = new Set(
+    [...listed, ...specOperations].map((operation) => templateKey(operation.url)),
+  );
   /** @type {import('./discover/openapi.js').ApiOperation[]} */
   const repoOperations = [];
   for (const path of repoApis) {
@@ -49,10 +57,13 @@ export async function runApiPhase({
     covered.add(templateKey(url));
     repoOperations.push({ url, path, operationId: null });
   }
-  if (specOperations.length === 0 && repoOperations.length === 0)
+  if (listed.length === 0 && specOperations.length === 0 && repoOperations.length === 0)
     return plan ? { plan, operations: [] } : null;
 
   logger.info('');
+  if (listed.length > 0) {
+    logger.info(`${logger.paint.bold('API')}      ${listed.length} listed GET endpoint(s)`);
+  }
   if (plan) {
     logger.info(
       `${logger.paint.bold('API')}      ${specOperations.length} GET operation(s) from ${plan.source}` +
@@ -67,6 +78,7 @@ export async function runApiPhase({
 
   const cookieFor = await loadCookieJar(settings.storageStatePath);
   for (const [operations, source] of /** @type {const} */ ([
+    [listed, 'listed'],
     [specOperations, 'openapi'],
     [repoOperations, 'repo'],
   ])) {
@@ -91,7 +103,7 @@ export async function runApiPhase({
       runs: settings.runs,
     });
   }
-  return { plan, operations: [...specOperations, ...repoOperations] };
+  return { plan, operations: [...listed, ...specOperations, ...repoOperations] };
 }
 
 /**

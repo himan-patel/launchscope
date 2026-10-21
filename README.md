@@ -51,8 +51,9 @@ Bottlenecks · 1 critical, 3 warning, 2 info
   API calls that wait on each other, follows redirects, splits GraphQL by operation, tracks
   WebSockets, streams, and iframes, reads `Server-Timing`, and can send W3C `traceparent` headers
   so your tracing backend shows the database and service calls behind each page load.
-- **Covers what pages don't call.** Measures GET endpoints from your OpenAPI spec or your routes
-  directly, and measures client-side navigations in single-page apps the way users click.
+- **Covers what pages don't call.** Measures GET endpoints you list, from your OpenAPI spec, or
+  from your routes directly, and measures client-side navigations in single-page apps the way
+  users click. `launchscope api` does the same for an API on its own, with no browser.
 - **Finds bottlenecks from real numbers.** Slow and unstable endpoints, oversized and
   uncompressed payloads, duplicate calls, sequential API waterfalls, slow navigations, heavy
   pages, failing calls, missing caching, Web Vitals over budget, and regressions against a
@@ -92,6 +93,7 @@ launchscope perf http://localhost:3000 --routes /,/dashboard   # just these rout
 launchscope perf http://localhost:3000 --stress                # add a stress test
 launchscope perf http://localhost:3000 --spa --repo .          # client-side navigations + routes from source
 launchscope perf http://localhost:3000 --baseline latest --fail-on warning   # catch regressions in CI
+launchscope api http://localhost:3000 --endpoint /api/health --endpoint /api/items --stress  # APIs only, no browser
 launchscope login https://staging.example.com/login            # sign in once…
 launchscope perf https://staging.example.com --storage-state .auth/session.json  # …measure signed in
 ```
@@ -146,6 +148,7 @@ launchscope-reports/<host>_<timestamp>/perf/
 | Command                   | Purpose                                                                                      |
 | ------------------------- | -------------------------------------------------------------------------------------------- |
 | `launchscope perf <url>`  | Measure routes, trace hops, find bottlenecks, optionally stress test ([guide](docs/perf.md)) |
+| `launchscope api <url>`   | Measure API endpoints directly (no browser), find bottlenecks, optionally stress test        |
 | `launchscope login <url>` | Sign in once in a browser window and save the session for `--storage-state`                  |
 | `launchscope modules`     | List available and planned check modules (`--json` supported)                                |
 

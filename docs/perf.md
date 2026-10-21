@@ -181,6 +181,33 @@ invented input. Results join the endpoint statistics and findings (the report ma
 DNS, connect, and TLS are reported together as "connect" for these direct calls. YAML specs are
 not supported yet.
 
+### Measure an API without a browser
+
+```sh
+launchscope api http://localhost:3000 --endpoint /api/health --endpoint "GET /api/items?page=1"
+launchscope api http://localhost:3000                          # finds /openapi.json, /v3/api-docs, …
+launchscope api http://localhost:3000 --openapi ./openapi.json --runs 10 --stress
+launchscope api http://localhost:3000 --repo . --baseline latest --fail-on warning
+```
+
+`launchscope api` is the same pipeline as `launchscope perf` without the browser: no pages are
+loaded, no sitemap is read, and no screenshots or HAR files are written. Endpoints come from
+`--endpoint` (repeatable, or `perf.endpoints` in the config file), an OpenAPI spec, and/or GET API
+routes in the repository. With none of those given, it looks for a spec at the usual locations.
+Each endpoint is called `--runs` times, one after another, with your `--header` values and
+`--storage-state` cookies, and results get the same endpoint statistics, findings, budgets,
+`--stress` and `--export-k6` replays, `--baseline` comparison, `--fail-on` exit code, and report
+as a page run.
+
+Listed endpoints are paths or URLs on the target origin, optionally prefixed with `GET`. Other
+methods are refused, so `--endpoint` never writes data. `launchscope api` reads the `perf`
+section of the config file (headers, budgets, stress settings); page-only settings such as
+`routes`, `spa`, and `lighthouse` are ignored. `--baseline latest` only picks earlier
+`launchscope api` runs, and `launchscope perf` only picks earlier page runs.
+
+`launchscope perf --endpoint <path>` measures listed endpoints alongside the pages; the report
+marks them "listed".
+
 ### Measure pages behind a login
 
 Sign in once in a real browser window (SSO and MFA work), then reuse the saved session:
@@ -595,6 +622,7 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 | `--browser-channel <name>`     | bundled Chromium                 | Use an installed browser: `chrome`, `msedge`, …                                                       |
 | `--headed`                     | off                              | Show the browser window                                                                               |
 | `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                                                |
+| `--endpoint <path>`            | –                                | Also measure this GET endpoint directly, e.g. `/api/health` (repeatable, max 100)                     |
 | `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                                          |
 | `--stress`                     | off                              | Stress test after measuring                                                                           |
 | `--stress-stages <list>`       | 1,5,10,25,50                     | Concurrent users per stage, strictly increasing (max 10 stages, 1000 users)                           |
@@ -610,6 +638,14 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 Global options (`--config`, `--output-dir`, `--no-color`, `--quiet`, `--verbose`) go before the
 command name, e.g. `launchscope --verbose perf http://localhost:3000`. `--verbose` prints each
 route's hop tree.
+
+### `launchscope api <target>`
+
+Takes `--endpoint <path>` (repeatable), `--openapi`, `--repo`, `--runs` (calls per endpoint),
+`--timeout` (per request), `--storage-state`, `--header`, the stress options except
+`--stress-include-assets` and `--stress-replay`, `--allow-remote`, `--json`, `--dry-run`,
+`--export-k6`, `--baseline`, and `--fail-on`, with the same defaults and limits as
+`launchscope perf`. See [Measure an API without a browser](#measure-an-api-without-a-browser).
 
 ### `launchscope login <url>`
 
