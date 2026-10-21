@@ -213,6 +213,41 @@ describe('launchscope api', () => {
     assert.doesNotMatch(imports, /viewed=har|sid=recorded/);
   });
 
+  it('measures requests from a Postman collection', async () => {
+    await writeFile(
+      join(workdir, 'fixture.postman_collection.json'),
+      JSON.stringify({
+        info: {
+          name: 'Fixture',
+          schema: 'https://schema.getpostman.com/json/collection/v2.1.0/collection.json',
+        },
+        item: [
+          { name: 'Unlinked', request: { method: 'GET', url: '{{baseUrl}}/api/unlinked' } },
+          { name: 'Missing', request: { method: 'GET', url: '{{baseUrl}}/api/x/{{id}}' } },
+        ],
+      }),
+    );
+    const postman = await runCli(
+      [
+        'api',
+        server.origin,
+        '--import',
+        'fixture.postman_collection.json',
+        '--runs',
+        '1',
+        '--json',
+        '-o',
+        'postman',
+      ],
+      { cwd: workdir },
+    );
+    assert.equal(postman.code, 0, postman.stderr);
+    assert.match(postman.stderr, /1 request\(s\) imported from .* \(Postman collection\)/);
+    const postmanSummary = JSON.parse(postman.stdout);
+    assert.deepEqual(endpointIn(postmanSummary, '/api/unlinked').discoveredBy, ['imported']);
+    assert.equal(postmanSummary.imports.skipped[0].reason, 'unresolved variable {{id}}');
+  });
+
   it('compares only with earlier API runs', async () => {
     const second = await runCli(
       [

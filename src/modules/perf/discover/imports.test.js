@@ -141,7 +141,9 @@ describe('loadImports (HAR)', () => {
     await writeFile(other, '{"hello":1}');
     await assert.rejects(
       loadImports({ files: [other], targetUrl: TARGET, includeWrites: false, limit: 10 }),
-      (error) => error instanceof UsageError && /not a HAR file/.test(error.message),
+      (error) =>
+        error instanceof UsageError &&
+        /neither a HAR file nor a Postman collection/.test(error.message),
     );
     await assert.rejects(
       loadImports({

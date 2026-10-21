@@ -27,7 +27,7 @@ export function registerPerf(program, services) {
     )
     .option(
       '--import <file>',
-      'also measure the API requests recorded in a HAR file (repeatable)',
+      'also measure the requests in a HAR file or Postman collection (repeatable)',
       collect,
     )
     .option('--import-writes', 'also import recorded POST/PUT/PATCH requests, with their bodies')

@@ -61,7 +61,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  *   call API endpoints directly, without a browser (`launchscope api`).
  * @property {import('./discover/openapi.js').ApiOperation[]} endpoints Endpoints listed with
  *   `--endpoint` or `perf.endpoints`, measured directly over HTTP. Writes carry their body.
- * @property {string[]} imports Absolute paths of HAR files to import requests from.
+ * @property {string[]} imports Absolute paths of HAR files or Postman collections to import.
  * @property {boolean} importWrites Also import recorded POST/PUT/PATCH requests, with their bodies.
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI document (JSON or YAML).
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
@@ -910,7 +910,7 @@ function parseImports(value, cwd) {
     !Array.isArray(items) ||
     !items.every((item) => typeof item === 'string' && item.trim() !== '')
   ) {
-    throw new UsageError('Imports must be paths to HAR files.');
+    throw new UsageError('Imports must be paths to HAR files or Postman collections.');
   }
   return [...new Set(items.map((item) => resolve(cwd, item)))];
 }

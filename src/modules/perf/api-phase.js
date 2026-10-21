@@ -18,7 +18,7 @@ const SPEC_TIMEOUT_MS = 10_000;
 
 /**
  * Measures API endpoints directly over HTTP: endpoints listed with `--endpoint`, requests
- * imported from HAR files, GET operations from an OpenAPI document, and GET routes found in the
+ * imported from HAR files and Postman collections, GET operations from an OpenAPI document, and GET routes found in the
  * repository, in that order of precedence. Results are folded into the endpoint statistics; the
  * OpenAPI plan is written to `openapi.json` and the import plan to `imports.json`.
  *
@@ -102,7 +102,7 @@ export async function runApiPhase({
   if (imports) {
     for (const source of imports.sources) {
       logger.info(
-        `${logger.paint.bold('API')}      ${source.operations} request(s) imported from ${source.file} (${source.format.toUpperCase()})`,
+        `${logger.paint.bold('API')}      ${source.operations} request(s) imported from ${source.file} (${source.format === 'har' ? 'HAR' : 'Postman collection'})`,
       );
     }
     const skippedCount = imports.skipped.reduce((sum, entry) => sum + entry.count, 0);
