@@ -28,7 +28,7 @@ export function registerApi(program, services) {
     )
     .option(
       '--openapi <spec>',
-      'measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file (default: auto when nothing is listed)',
+      'measure GET operations from an OpenAPI spec (JSON or YAML): "auto", a URL, or a file (default: auto when nothing is listed)',
     )
     .option('--repo <dir>', 'also read GET API routes from the app source (Next.js, Express, …)')
     .optionsGroup('Measurement:')

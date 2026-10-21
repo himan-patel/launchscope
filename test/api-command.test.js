@@ -111,6 +111,36 @@ describe('launchscope api', () => {
     );
   });
 
+  it('reads a YAML spec file', async () => {
+    await writeFile(
+      join(workdir, 'openapi.yaml'),
+      [
+        'openapi: 3.0.3',
+        'info:',
+        '  title: Fixture (YAML)',
+        'paths:',
+        '  /api/unlinked:',
+        '    get:',
+        '      operationId: unlinked',
+        '  /api/orders:',
+        '    post:',
+        '      operationId: createOrder',
+      ].join('\n'),
+    );
+    const yaml = await runCli(
+      ['api', server.origin, '--openapi', 'openapi.yaml', '--runs', '1', '--json', '-o', 'yaml'],
+      { cwd: workdir },
+    );
+    assert.equal(yaml.code, 0, yaml.stderr);
+    const yamlSummary = JSON.parse(yaml.stdout);
+    assert.equal(yamlSummary.openapi.title, 'Fixture (YAML)');
+    assert.equal(yamlSummary.openapi.measured, 1);
+    assert.deepEqual(
+      yamlSummary.openapi.skipped.map((/** @type {{ method: string }} */ op) => op.method),
+      ['POST'],
+    );
+  });
+
   it('compares only with earlier API runs', async () => {
     const second = await runCli(
       [

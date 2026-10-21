@@ -11,19 +11,47 @@ describe('parseSpec', () => {
     assert.equal(parseSpec(JSON.stringify({ swagger: '2.0', paths: {} }), 'x').swagger, '2.0');
   });
 
-  it('explains YAML and rejects other documents', () => {
+  it('accepts YAML, using the core schema only', () => {
+    const document = parseSpec(
+      [
+        'openapi: 3.0.3',
+        'info: { title: Shop }',
+        'paths:',
+        '  /api/items/{id}:',
+        '    get:',
+        '      parameters:',
+        '        - &id { name: id, in: path, required: true, example: 42 }',
+        '  /api/other/{id}:',
+        '    get:',
+        '      parameters: [*id]',
+        '      x-when: 2026-01-01',
+      ].join('\n'),
+      'spec.yaml',
+    );
+    assert.equal(document.openapi, '3.0.3');
+    assert.equal(document.paths['/api/other/{id}'].get.parameters[0].example, 42);
+    assert.equal(document.paths['/api/other/{id}'].get['x-when'], '2026-01-01', 'no date objects');
+  });
+
+  it('rejects alias bombs, broken YAML, and other documents', () => {
+    const bomb = [
+      'a: &a [x, x, x, x, x, x, x, x, x, x]',
+      ...Array.from({ length: 12 }, (_, index) => {
+        const name = String.fromCharCode(98 + index);
+        const previous = String.fromCharCode(97 + index);
+        return `${name}: &${name} [${Array(10).fill(`*${previous}`).join(', ')}]`;
+      }),
+    ].join('\n');
+    assert.throws(() => parseSpec(bomb, 'bomb.yaml'), UsageError);
     assert.throws(
-      () => parseSpec('openapi: 3.0.0', 'spec.yaml'),
-      (error) => {
-        assert.ok(error instanceof UsageError);
-        assert.match(error.hint ?? '', /YAML specs are not supported/);
-        return true;
-      },
+      () => parseSpec('openapi: [unclosed', 'broken.yaml'),
+      /neither JSON nor valid YAML/,
     );
     assert.throws(
       () => parseSpec(JSON.stringify({ hello: 1 }), 'x'),
       /not an OpenAPI 3\.x or Swagger 2\.0/,
     );
+    assert.throws(() => parseSpec('<html>not found</html>', 'x'), /not an OpenAPI/);
   });
 });
 
@@ -138,6 +166,23 @@ describe('loadOpenApi', () => {
       fetchImpl: fakeFetch({ 'https://app.test/v3/api-docs': spec }),
     });
     assert.equal(loaded?.source, 'https://app.test/v3/api-docs');
+  });
+
+  it('finds a YAML spec at a well-known path', async () => {
+    const loaded = await loadOpenApi({
+      reference: 'auto',
+      targetUrl: TARGET,
+      headers: {},
+      timeoutMs: 1000,
+      fetchImpl: /** @type {typeof fetch} */ (
+        async (input) =>
+          String(input) === 'https://app.test/openapi.yaml'
+            ? new Response('openapi: 3.1.0\npaths: {}\n', { status: 200 })
+            : new Response('not found', { status: 404 })
+      ),
+    });
+    assert.equal(loaded?.source, 'https://app.test/openapi.yaml');
+    assert.equal(loaded?.document.openapi, '3.1.0');
   });
 
   it('returns null when auto finds nothing, and fails for an explicit URL', async () => {

@@ -1,8 +1,9 @@
 import { readFile } from 'node:fs/promises';
+import { parse as parseYaml } from 'yaml';
 import { UsageError } from '../../../core/errors.js';
 
 /**
- * Reads an OpenAPI 3.x or Swagger 2.0 document (JSON) and turns its safe operations into URLs
+ * Reads an OpenAPI 3.x or Swagger 2.0 document (JSON or YAML) and turns its safe operations into URLs
  * that can be measured directly. Only GET operations on the target origin are used. Path and
  * required query parameters must have an example or default value; operations that need values
  * LaunchScope cannot guess are reported as skipped rather than called with made-up input.
@@ -16,9 +17,15 @@ export const WELL_KNOWN_SPEC_PATHS = Object.freeze([
   '/api-docs',
   '/api/openapi.json',
   '/swagger/v1/swagger.json',
+  '/openapi.yaml',
+  '/openapi.yml',
+  '/swagger.yaml',
 ]);
 
 const MAX_SPEC_BYTES = 10 * 1024 * 1024;
+/** YAML aliases can expand exponentially ("billion laughs"); real specs need few. */
+const MAX_YAML_ALIASES = 100;
+const SPEC_ACCEPT = 'application/json, application/yaml;q=0.9, text/yaml;q=0.9, */*;q=0.5';
 
 /**
  * @typedef {object} ApiOperation
@@ -95,7 +102,7 @@ async function fetchSpec(url, headers, timeoutMs, fetchImpl, { optional }) {
   let response;
   try {
     response = await fetchImpl(url, {
-      headers: { ...headers, accept: 'application/json' },
+      headers: { ...headers, accept: SPEC_ACCEPT },
       signal: AbortSignal.timeout(timeoutMs),
     });
   } catch (error) {
@@ -130,9 +137,15 @@ export function parseSpec(text, source) {
   try {
     document = JSON.parse(text);
   } catch {
-    throw new UsageError(`OpenAPI document ${source} is not JSON.`, {
-      hint: 'YAML specs are not supported yet; serve or convert the spec as JSON.',
-    });
+    try {
+      // The YAML 1.2 core schema has no custom tags, so parsing never runs code or loads files.
+      document = parseYaml(text, { schema: 'core', maxAliasCount: MAX_YAML_ALIASES });
+    } catch (error) {
+      throw new UsageError(`OpenAPI document ${source} is neither JSON nor valid YAML.`, {
+        cause: error,
+        hint: error instanceof Error ? error.message.split('\n')[0] : undefined,
+      });
+    }
   }
   const version = String(document?.openapi ?? document?.swagger ?? '');
   if (

@@ -154,7 +154,7 @@
         "openapi": {
           "type": "string",
           "minLength": 1,
-          "description": "Measure GET operations from an OpenAPI JSON spec: \"auto\", a URL, or a file path."
+          "description": "Measure GET operations from an OpenAPI spec (JSON or YAML): \"auto\", a URL, or a file path."
         },
         "repo": {
           "type": "string",
