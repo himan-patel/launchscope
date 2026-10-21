@@ -34,6 +34,10 @@ All notable changes to this project are documented here. The format follows
   calls recorded in a HAR file. Only requests to the target origin that are API calls are
   imported; recorded writes only with `--import-writes`, DELETE never. Headers and cookies in the
   file are never used. `imports.json` lists what was skipped and why.
+- Postman collections (v2.0/v2.1) for `--import`: requests in all folders, collection variables,
+  `{{baseUrl}}`-style prefixes pointed at the target, and raw, URL-encoded, and GraphQL bodies.
+  Requests with other unresolved variables or form-data/file bodies are skipped with a reason;
+  the collection's auth settings and headers are never used.
 
 ### Changed
 

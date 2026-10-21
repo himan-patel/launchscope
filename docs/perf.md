@@ -223,13 +223,17 @@ the `connectionSetupMs` budget, with the DNS, connect, and TLS medians as eviden
 percentiles, and call counts include both calls. Redirects are followed only on the target
 origin, so headers and cookies never go to another host, and certificates are always validated.
 
-#### Import requests from a HAR file
+#### Import requests from a HAR file or Postman collection
 
 ```sh
 launchscope api http://localhost:3000 --import session.har                  # GET API calls only
 launchscope api http://localhost:3000 --import session.har --import-writes  # plus POST/PUT/PATCH
+launchscope api http://localhost:3000 --import shop.postman_collection.json --import-writes
 launchscope perf http://localhost:3000 --import session.har                 # alongside the pages
 ```
+
+The format is detected from the file. Both kinds follow the rules below; Postman specifics come
+after them.
 
 Record a session in your browser (DevTools → Network → "Save all as HAR"), then measure the API
 calls it made. Requests to the target origin that are API calls (Chromium's `fetch`/`xhr`
@@ -242,6 +246,14 @@ reason (other origin, not an API call, write, limit), and the report marks impor
 "imported". Precedence when the same request comes from several sources: `--endpoint`, then
 `--import`, then the OpenAPI spec, then `--repo`. Config: `perf.import` (a path or a list) and
 `perf.importWrites`.
+
+**Postman collections** (export as "Collection v2.1"; v2.0 also works): requests in all folders
+are imported. `{{variables}}` are filled from the collection's own variables. A URL that starts
+with a variable the collection does not define, such as `{{baseUrl}}/api/items`, is pointed at
+the target; a request with any other unresolved variable is skipped rather than sent with a
+guess (environment files are not read). Raw, URL-encoded, and GraphQL bodies are sent with
+their Content-Type (from the request's `Content-Type` header or the body's language); form-data
+and file bodies are skipped. The collection's auth settings and headers are never used.
 
 #### Write endpoints (POST, PUT, PATCH)
 
@@ -695,7 +707,7 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 | `--headed`                     | off                              | Show the browser window                                                                               |
 | `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                                                |
 | `--endpoint <spec>`            | –                                | Also measure this endpoint directly, e.g. `/api/health` or `POST /api/x @body.json` (repeatable)      |
-| `--import <file>`              | –                                | Also measure the API requests recorded in a HAR file (repeatable)                                     |
+| `--import <file>`              | –                                | Also measure the requests in a HAR file or Postman collection (repeatable)                            |
 | `--import-writes`              | off                              | Also import recorded POST/PUT/PATCH requests, with their bodies                                       |
 | `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                                          |
 | `--stress`                     | off                              | Stress test after measuring                                                                           |

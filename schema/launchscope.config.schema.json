@@ -152,7 +152,7 @@
           }
         },
         "import": {
-          "description": "HAR file(s) whose recorded API requests are measured directly.",
+          "description": "HAR files or Postman collections whose API requests are measured directly.",
           "oneOf": [
             { "type": "string", "minLength": 1 },
             { "type": "array", "items": { "type": "string", "minLength": 1 } }

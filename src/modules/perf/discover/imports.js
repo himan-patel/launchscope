@@ -1,9 +1,10 @@
 import { readFile, stat } from 'node:fs/promises';
 import { UsageError } from '../../../core/errors.js';
+import { isPostmanCollection, postmanRequests } from './postman.js';
 
 /**
  * Turns recorded or saved requests into API operations to measure directly: HAR files (exported
- * from browser DevTools or proxies). Only requests to the target origin that look like API calls
+ * from browser DevTools or proxies) and Postman collections (v2.0/v2.1). Only requests to the target origin that look like API calls
  * are used. GET requests are imported as they are; POST, PUT, and PATCH only with
  * `includeWrites`, with their recorded bodies; DELETE and other methods never. Headers and
  * cookies from the file are never used, so credentials in it are not replayed: pass `--header`
@@ -29,7 +30,7 @@ const API_MIME = /json|xml|graphql|text\/plain|x-www-form-urlencoded/i;
  * @typedef {object} ImportPlan
  * @property {import('./openapi.js').ApiOperation[]} operations
  * @property {ImportSkip[]} skipped
- * @property {Array<{ file: string, format: 'har', operations: number }>} sources
+ * @property {Array<{ file: string, format: 'har' | 'postman', operations: number }>} sources
  */
 
 /**
@@ -58,7 +59,14 @@ export async function loadImports({ files, targetUrl, includeWrites, limit }) {
   for (const file of files) {
     const document = await readImportFile(file);
     const before = plan.operations.length;
-    for (const request of harRequests(document, file)) {
+    const format = isPostmanCollection(document) ? 'postman' : 'har';
+    const requests =
+      format === 'postman' ? postmanRequests(document, targetUrl) : harRequests(document, file);
+    for (const request of requests) {
+      if (request.skipReason) {
+        skip(request.method, request.url, request.skipReason);
+        continue;
+      }
       const operation = toOperation(request, { targetUrl, includeWrites, skip });
       if (!operation) continue;
       const key = `${operation.method ?? 'GET'} ${operation.url}`;
@@ -70,7 +78,7 @@ export async function loadImports({ files, targetUrl, includeWrites, limit }) {
       }
       plan.operations.push(operation);
     }
-    plan.sources.push({ file, format: 'har', operations: plan.operations.length - before });
+    plan.sources.push({ file, format, operations: plan.operations.length - before });
   }
   plan.skipped = [...skips.values()].sort((a, b) => b.count - a.count).slice(0, MAX_SKIPPED_LISTED);
   return plan;
@@ -84,6 +92,7 @@ export async function loadImports({ files, targetUrl, includeWrites, limit }) {
  * @property {string | null} contentType
  * @property {boolean} looksLikeApi
  * @property {string} kind Shown when the request is not an API call, e.g. `document`.
+ * @property {string} [skipReason] Set when the request cannot be sent as it is.
  */
 
 /**
@@ -106,7 +115,7 @@ async function readImportFile(file) {
   } catch (error) {
     throw new UsageError(`Import file ${file} is not JSON.`, {
       cause: error,
-      hint: 'Export a HAR file from your browser DevTools (Network panel → "Save all as HAR").',
+      hint: 'Use a HAR file (DevTools Network panel → "Save all as HAR") or a Postman collection export.',
     });
   }
 }
@@ -119,7 +128,9 @@ async function readImportFile(file) {
 function harRequests(document, file) {
   const entries = document?.log?.entries;
   if (!Array.isArray(entries)) {
-    throw new UsageError(`Import file ${file} is not a HAR file (no log.entries).`);
+    throw new UsageError(`Import file ${file} is neither a HAR file nor a Postman collection.`, {
+      hint: 'Postman: export the collection as "Collection v2.1". HAR: DevTools → Network → "Save all as HAR".',
+    });
   }
   /** @type {ImportedRequest[]} */
   const requests = [];
