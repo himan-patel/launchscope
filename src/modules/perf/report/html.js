@@ -317,6 +317,7 @@ function renderEndpoints(endpoints, openapi) {
 <th scope="row"><code>${e(endpointLabel(endpoint))}</code>${endpoint.thirdParty ? ' <span class="pill">3rd party</span>' : ''}</th>
 <td>${e(endpoint.resourceType)}</td><td>${num(endpoint.calls)}</td><td>${num(endpoint.routes.length)}</td>
 <td>${ms(endpoint.durationMs?.p50)}</td><td>${ms(endpoint.durationMs?.p95)}</td><td>${ms(endpoint.waitMs?.p50)}</td>
+<td>${ms(endpoint.newConnectionMs?.p50)} / ${ms(endpoint.reusedConnectionMs?.p50)}</td>
 <td>${bytes(endpoint.bodyBytes?.p50)}</td><td>${endpoint.compressed ? 'yes' : '<span class="bad">no</span>'}</td>
 <td>${endpoint.largestJsonArray === null ? '–' : num(endpoint.largestJsonArray)}</td>
 <td>${e(statuses || '–')}</td><td>${e(timing || '–')}</td>
@@ -330,7 +331,7 @@ ${renderOpenApiNote(openapi)}
 ${chart ? `<figure class="chart">${inlineSvg(chart)}<figcaption class="muted">Values for every endpoint are in the table below.</figcaption></figure>` : ''}
 <div class="table-wrap"><table>
 <caption>Endpoint statistics</caption>
-<thead><tr><th scope="col">Endpoint</th><th scope="col">Type</th><th scope="col">Calls</th><th scope="col">Routes</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Server wait p50</th><th scope="col">Size p50</th><th scope="col">Compressed</th><th scope="col">JSON items</th><th scope="col">Status</th><th scope="col">Server-Timing</th><th scope="col">Found by</th></tr></thead>
+<thead><tr><th scope="col">Endpoint</th><th scope="col">Type</th><th scope="col">Calls</th><th scope="col">Routes</th><th scope="col">p50</th><th scope="col">p95</th><th scope="col">Server wait p50</th><th scope="col">New / reused conn. p50</th><th scope="col">Size p50</th><th scope="col">Compressed</th><th scope="col">JSON items</th><th scope="col">Status</th><th scope="col">Server-Timing</th><th scope="col">Found by</th></tr></thead>
 <tbody>${rows}</tbody></table></div>
 </section>`;
 }

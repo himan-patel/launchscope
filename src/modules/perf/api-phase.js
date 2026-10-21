@@ -100,6 +100,7 @@ export async function runApiPhase({
       timeoutMs: settings.timeoutMs,
       headers: settings.headers,
       cookieFor,
+      origin: settings.targetUrl.origin,
       signal,
     });
     accumulator.addApiLoads(loads, settings.targetUrl.origin, source);

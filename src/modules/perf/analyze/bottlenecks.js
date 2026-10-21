@@ -456,7 +456,41 @@ function endpointFindings(endpoint, budgets) {
       });
     }
 
+    const fresh = endpoint.newConnectionMs;
+    const reused = endpoint.reusedConnectionMs;
+    const setupMs = fresh && reused ? fresh.p50 - reused.p50 : 0;
+    const setupSeverity =
+      fresh && reused && fresh.count >= 2 && reused.count >= 2
+        ? classify(budgets.connectionSetupMs, setupMs)
+        : null;
+    if (fresh && reused && setupSeverity) {
+      const phases = endpoint.connectionSetup;
+      const parts = phases
+        ? ` Median setup: DNS ${formatDuration(phases.dnsMs)}, TCP connect ${formatDuration(phases.connectMs)}, TLS ${formatDuration(phases.tlsMs)}.`
+        : '';
+      findings.push({
+        id: `connection-setup:${endpoint.key}`,
+        rule: 'connection-setup',
+        severity: setupSeverity,
+        category: 'network',
+        title: `${name} takes ${formatDuration(setupMs)} longer on a new connection`,
+        detail: `p50 ${formatDuration(fresh.p50)} on a new connection (${fresh.count} call(s)) versus ${formatDuration(reused.p50)} on a reused one (${reused.count} call(s)).${parts}`,
+        recommendation:
+          'Make sure clients keep connections alive and reuse them (HTTP keep-alive, connection pooling), enable TLS session resumption and HTTP/2 or HTTP/3, and serve callers from a nearby region or edge.',
+        subject,
+        evidence: {
+          newConnectionP50Ms: fresh.p50,
+          reusedConnectionP50Ms: reused.p50,
+          setupMs: round(setupMs),
+          ...(phases ?? {}),
+        },
+        impact: setupMs,
+      });
+    }
+
+    // Spread explained by connection setup is reported above, not as instability.
     if (
+      !setupSeverity &&
       endpoint.durationMs.count >= MIN_SAMPLES_FOR_INSTABILITY &&
       endpoint.durationMs.p50 > 0 &&
       endpoint.durationMs.p95 / endpoint.durationMs.p50 >= INSTABILITY_RATIO &&

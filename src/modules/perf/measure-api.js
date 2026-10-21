@@ -1,14 +1,19 @@
-import { performance } from 'node:perf_hooks';
 import { BRAND } from '../../core/brand.js';
 import { describeJsonShape } from './capture/network-recorder.js';
+import { createConnectionAgent, timedRequest } from './http-request.js';
 
 /**
  * Measures API operations directly over HTTP (no browser), for endpoints that are listed, found
- * in an OpenAPI document, or found in the repository. Each operation is called `runs` times, sequentially, with the target-origin headers
- * and session cookies the browser measurements use. Timing comes from Node's Resource Timing
- * entries for `fetch`; Node reports DNS, connect, and TLS as one interval, so they are recorded
- * together as `connectMs`.
+ * in an OpenAPI document, or found in the repository. Each run calls every operation twice in a
+ * row on its own connection: first on a new connection (DNS, TCP, and TLS included), then on the
+ * same, reused connection (writes only make the first call, so they are sent once per run). The
+ * two calls land in separate synthetic loads, so endpoint statistics
+ * can compare them and duplicate-call rules do not see the pair as a duplicate. Requests carry the
+ * target-origin headers and session cookies the browser measurements use.
  */
+
+/** @typedef {import('./capture/network-recorder.js').RequestRecord} RequestRecord */
+/** @typedef {{ run: number, connection: 'new' | 'reused', requests: RequestRecord[] }} ApiLoad */
 
 const KEPT_HEADERS = [
   'content-type',
@@ -29,10 +34,9 @@ const MAX_JSON_INSPECT_BYTES = 5 * 1024 * 1024;
  * @param {number} options.timeoutMs
  * @param {Record<string, string>} options.headers
  * @param {(url: string) => string | undefined} options.cookieFor
+ * @param {string} options.origin Target origin; redirects elsewhere are not followed.
  * @param {AbortSignal} [options.signal]
- * @param {typeof fetch} [options.fetchImpl]
- * @returns {Promise<Array<{ run: number, requests: import('./capture/network-recorder.js').RequestRecord[] }>>}
- *   One synthetic "load" per run, so the results flow into endpoint statistics.
+ * @returns {Promise<ApiLoad[]>} Two synthetic loads per run: new connections, then reused ones.
  */
 export async function measureApiOperations({
   operations,
@@ -40,22 +44,31 @@ export async function measureApiOperations({
   timeoutMs,
   headers,
   cookieFor,
+  origin,
   signal,
-  fetchImpl = fetch,
 }) {
   const userAgent = `${BRAND.command}/${BRAND.version} (+${BRAND.repositoryUrl})`;
-  /** @type {Array<{ run: number, requests: import('./capture/network-recorder.js').RequestRecord[] }>} */
+  /** @type {ApiLoad[]} */
   const loads = [];
   for (let run = 1; run <= runs && !signal?.aborted; run += 1) {
-    /** @type {import('./capture/network-recorder.js').RequestRecord[]} */
-    const requests = [];
+    /** @type {ApiLoad} */
+    const cold = { run, connection: 'new', requests: [] };
+    /** @type {ApiLoad} */
+    const warm = { run, connection: 'reused', requests: [] };
     for (const operation of operations) {
       if (signal?.aborted) break;
-      requests.push(
-        await measureOnce(operation, run, { timeoutMs, headers, cookieFor, userAgent, fetchImpl }),
-      );
+      const agent = createConnectionAgent(operation.url);
+      try {
+        const options = { timeoutMs, headers, cookieFor, userAgent, agent, origin, signal };
+        cold.requests.push(await measureOnce(operation, run, 'new', options));
+        // A listed write is sent once per run, as many times as the user asked for.
+        if (signal?.aborted || operation.method) continue;
+        warm.requests.push(await measureOnce(operation, run, 'reused', options));
+      } finally {
+        agent.destroy();
+      }
     }
-    loads.push({ run, requests });
+    loads.push(cold, warm);
   }
   return loads;
 }
@@ -63,13 +76,15 @@ export async function measureApiOperations({
 /**
  * @param {import('./discover/openapi.js').ApiOperation} operation
  * @param {number} run
- * @param {{ timeoutMs: number, headers: Record<string, string>, cookieFor: (url: string) => string | undefined, userAgent: string, fetchImpl: typeof fetch }} options
- * @returns {Promise<import('./capture/network-recorder.js').RequestRecord>}
+ * @param {'new' | 'reused'} connection Which call of the pair this is (for the record id).
+ * @param {{ timeoutMs: number, headers: Record<string, string>, cookieFor: (url: string) => string | undefined, userAgent: string, agent: import('node:http').Agent, origin: string, signal?: AbortSignal }} options
+ * @returns {Promise<RequestRecord>}
  */
 async function measureOnce(
   operation,
   run,
-  { timeoutMs, headers, cookieFor, userAgent, fetchImpl },
+  connection,
+  { timeoutMs, headers, cookieFor, userAgent, agent, origin, signal },
 ) {
   const method = operation.method ?? 'GET';
   /** @type {Record<string, string>} */
@@ -78,44 +93,38 @@ async function measureOnce(
   if (cookie) requestHeaders.cookie = cookie;
   if (operation.contentType) requestHeaders['content-type'] = operation.contentType;
 
-  const started = performance.now();
-  /** @type {Response | null} */
+  /** @type {import('./http-request.js').TimedResponse | null} */
   let response = null;
-  /** @type {Buffer | null} */
-  let body = null;
   /** @type {string | null} */
   let failure = null;
   try {
-    response = await fetchImpl(operation.url, {
+    response = await timedRequest({
+      url: operation.url,
       method,
-      body: operation.body ?? undefined,
       headers: requestHeaders,
-      redirect: 'follow',
-      signal: AbortSignal.timeout(timeoutMs),
+      body: operation.body ?? null,
+      timeoutMs,
+      agent,
+      allowedOrigin: origin,
+      signal,
     });
-    body = Buffer.from(await response.arrayBuffer());
   } catch (error) {
-    const cause = /** @type {{ code?: string }} */ (
-      error instanceof Error ? (error.cause ?? {}) : {}
-    );
+    const code = /** @type {{ code?: string }} */ (error ?? {}).code;
     failure =
       error instanceof Error && error.name === 'TimeoutError'
         ? `Timed out after ${timeoutMs} ms`
-        : (cause.code ?? (error instanceof Error ? error.message : String(error)));
+        : (code ?? (error instanceof Error ? error.message : String(error)));
   }
-  const ended = performance.now();
-  await new Promise((resolve) => setImmediate(resolve));
-  const timing = latestResourceTiming(operation.url, started);
-  performance.clearResourceTimings();
 
   /** @type {Record<string, string>} */
   const kept = {};
   for (const name of KEPT_HEADERS) {
-    const value = response?.headers.get(name);
+    const value = response?.headers[name];
     if (value) kept[name] = value.slice(0, 500);
   }
 
   let jsonShape = null;
+  const body = response?.body ?? null;
   if (body && /json/i.test(kept['content-type'] ?? '') && body.length <= MAX_JSON_INSPECT_BYTES) {
     try {
       jsonShape = describeJsonShape(JSON.parse(body.toString('utf8')));
@@ -124,10 +133,10 @@ async function measureOnce(
     }
   }
 
-  const durationMs = round(timing ? timing.responseEnd - timing.startTime : ended - started);
+  const durationMs = response?.durationMs ?? 0;
   return {
-    id: `api-${run}-${method}-${operation.url}`,
-    url: response?.url || operation.url,
+    id: `api-${run}-${connection}-${method}-${operation.url}`,
+    url: response?.url ?? operation.url,
     method,
     resourceType: 'Fetch',
     isNavigation: false,
@@ -135,30 +144,18 @@ async function measureOnce(
     startMs: 0,
     endMs: durationMs,
     durationMs,
-    responseStartMs: timing ? round(timing.responseStart - timing.startTime) : null,
-    phases: timing
-      ? {
-          queueMs: 0,
-          dnsMs: 0,
-          connectMs: round(Math.max(0, timing.requestStart - timing.startTime)),
-          tlsMs: 0,
-          sendMs: 0,
-          waitMs: round(Math.max(0, timing.responseStart - timing.requestStart)),
-          downloadMs: round(Math.max(0, timing.responseEnd - timing.responseStart)),
-        }
-      : null,
+    responseStartMs: response?.responseStartMs ?? null,
+    phases: response ? { queueMs: 0, ...response.phases } : null,
     status: response?.status ?? null,
     mimeType: kept['content-type']?.split(';')[0] ?? null,
-    protocol: null,
+    protocol: response ? 'http/1.1' : null,
     fromCache: false,
     fromServiceWorker: false,
-    connectionReused: false,
-    transferBytes: timing?.transferSize || body?.length || 0,
+    connectionReused: response?.reused ?? false,
+    transferBytes: response?.transferBytes ?? 0,
     bodyBytes: body?.length ?? 0,
     headers: kept,
-    redirects: response?.redirected
-      ? [{ url: operation.url, status: 0, startMs: 0, endMs: 0 }]
-      : [],
+    redirects: response?.redirects ?? [],
     failure: failure ? { errorText: failure, canceled: false } : null,
     pending: false,
     jsonShape,
@@ -168,25 +165,4 @@ async function measureOnce(
     isMainFrame: true,
     streaming: false,
   };
-}
-
-/**
- * @param {string} url
- * @param {number} notBefore
- * @returns {PerformanceResourceTiming | null}
- */
-function latestResourceTiming(url, notBefore) {
-  const entries = /** @type {PerformanceResourceTiming[]} */ (
-    performance.getEntriesByType('resource')
-  );
-  for (let index = entries.length - 1; index >= 0; index -= 1) {
-    const entry = entries[index];
-    if (entry.name === url && entry.startTime >= notBefore - 1) return entry;
-  }
-  return null;
-}
-
-/** @param {number} value */
-function round(value) {
-  return Math.round(value * 100) / 100;
 }

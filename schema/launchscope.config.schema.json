@@ -259,6 +259,7 @@
         "tbtMs": { "$ref": "#/definitions/threshold" },
         "apiP95Ms": { "$ref": "#/definitions/threshold" },
         "serverWaitMs": { "$ref": "#/definitions/threshold" },
+        "connectionSetupMs": { "$ref": "#/definitions/threshold" },
         "apiPayloadBytes": { "$ref": "#/definitions/threshold" },
         "jsonArrayItems": { "$ref": "#/definitions/threshold" },
         "chainLength": { "$ref": "#/definitions/threshold" },

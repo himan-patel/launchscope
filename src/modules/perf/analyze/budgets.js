@@ -23,6 +23,8 @@ export const DEFAULT_BUDGETS = Object.freeze({
   apiP95Ms: Object.freeze({ warning: 500, critical: 1500 }),
   /** Server wait (TTFB after the request was sent), median across calls. */
   serverWaitMs: Object.freeze({ warning: 300, critical: 1000 }),
+  /** Extra time a call spends on a new connection versus a reused one, median. */
+  connectionSetupMs: Object.freeze({ warning: 200, critical: 600 }),
   /** Decoded API response size, median. */
   apiPayloadBytes: Object.freeze({ warning: 500 * 1024, critical: 2 * 1024 * 1024 }),
   /** Longest array in a JSON response. */
