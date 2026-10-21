@@ -85,21 +85,34 @@ export function buildScenarios(routes, { targetOrigin, includeAssets }) {
 }
 
 /**
- * A scenario that calls every measured OpenAPI operation in parallel, so endpoints no page calls
- * are also tested under load.
+ * A scenario that calls every directly measured API operation in parallel, so endpoints no page
+ * calls are also tested under load. Listed writes are replayed only when their path matches a
+ * `--stress-replay` pattern, the same allowlist page requests need.
  *
  * @param {import('../discover/openapi.js').ApiOperation[]} operations
+ * @param {{ replay?: RegExp[] }} [options]
  * @returns {Scenario}
  */
-export function apiScenario(operations) {
+export function apiScenario(operations, { replay = [] } = {}) {
+  const replayed = operations.filter(
+    (operation) =>
+      !operation.method || replay.some((pattern) => pattern.test(new URL(operation.url).pathname)),
+  );
   return {
     slug: '(openapi)',
-    url: operations[0]?.url ?? '',
+    url: replayed[0]?.url ?? '',
     levels: [
-      operations.map((operation) => ({
+      replayed.map((operation) => ({
         url: operation.url,
-        label: `GET ${templatePath(new URL(operation.url).pathname)}`,
+        label: `${operation.method ?? 'GET'} ${templatePath(new URL(operation.url).pathname)}`,
         kind: /** @type {const} */ ('api'),
+        ...(operation.method
+          ? {
+              method: operation.method,
+              body: operation.body ?? null,
+              contentType: operation.contentType ?? null,
+            }
+          : {}),
       })),
     ],
   };

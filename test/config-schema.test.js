@@ -41,6 +41,8 @@ describe('launchscope.config.schema.json', () => {
       { perf: { device: 'tablet' } },
       { perf: { stress: { mode: 'burst' } } },
       { perf: { budgets: { lpc: 1 } } },
+      { perf: { endpoints: [{ method: 'DELETE', path: '/api/items/1' }] } },
+      { perf: { endpoints: [{ url: '/api/me' }] } },
       { perf: { traceContext: { urlTemplate: 'https://t.test/no-placeholder' } } },
       { outputDir: '' },
     ]) {

@@ -71,10 +71,12 @@ async function measureOnce(
   run,
   { timeoutMs, headers, cookieFor, userAgent, fetchImpl },
 ) {
+  const method = operation.method ?? 'GET';
   /** @type {Record<string, string>} */
   const requestHeaders = { ...headers, accept: 'application/json', 'user-agent': userAgent };
   const cookie = cookieFor(operation.url);
   if (cookie) requestHeaders.cookie = cookie;
+  if (operation.contentType) requestHeaders['content-type'] = operation.contentType;
 
   const started = performance.now();
   /** @type {Response | null} */
@@ -85,7 +87,8 @@ async function measureOnce(
   let failure = null;
   try {
     response = await fetchImpl(operation.url, {
-      method: 'GET',
+      method,
+      body: operation.body ?? undefined,
       headers: requestHeaders,
       redirect: 'follow',
       signal: AbortSignal.timeout(timeoutMs),
@@ -123,9 +126,9 @@ async function measureOnce(
 
   const durationMs = round(timing ? timing.responseEnd - timing.startTime : ended - started);
   return {
-    id: `openapi-${run}-${operation.url}`,
+    id: `api-${run}-${method}-${operation.url}`,
     url: response?.url || operation.url,
-    method: 'GET',
+    method,
     resourceType: 'Fetch',
     isNavigation: false,
     initiator: { type: 'openapi', url: null, stackUrls: [], requestId: null },

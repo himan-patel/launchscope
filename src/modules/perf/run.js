@@ -205,7 +205,8 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
       targetOrigin: settings.targetUrl.origin,
       includeAssets: settings.stress.includeAssets,
     });
-    if (api && api.operations.length > 0) scenarios.push(apiScenario(api.operations));
+    const apiCalls = apiScenario(api?.operations ?? [], { replay: settings.stress.replay });
+    if (apiCalls.levels[0].length > 0) scenarios.push(apiCalls);
     if (scenarios.length > 0) {
       await mkdir(join(perfDirectory, 'stress'), { recursive: true });
       const k6Path = join(perfDirectory, 'stress', 'k6-script.js');

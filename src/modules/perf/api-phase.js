@@ -41,13 +41,15 @@ export async function runApiPhase({
   if ((!settings.openapi && repoApis.length === 0 && listed.length === 0) || signal.aborted)
     return null;
   const plan = settings.openapi ? await planFromSpec(settings, logger) : null;
-  const listedUrls = new Set(listed.map((operation) => operation.url));
+  // Spec and repository operations are GETs, so only listed GETs can duplicate them.
+  const listedGets = listed.filter((operation) => !operation.method);
+  const listedUrls = new Set(listedGets.map((operation) => operation.url));
   const specOperations = (plan?.operations ?? []).filter(
     (operation) => !listedUrls.has(operation.url),
   );
 
   const covered = new Set(
-    [...listed, ...specOperations].map((operation) => templateKey(operation.url)),
+    [...listedGets, ...specOperations].map((operation) => templateKey(operation.url)),
   );
   /** @type {import('./discover/openapi.js').ApiOperation[]} */
   const repoOperations = [];
@@ -62,7 +64,16 @@ export async function runApiPhase({
 
   logger.info('');
   if (listed.length > 0) {
-    logger.info(`${logger.paint.bold('API')}      ${listed.length} listed GET endpoint(s)`);
+    const writes = listed.filter((operation) => operation.method);
+    logger.info(
+      `${logger.paint.bold('API')}      ${listed.length} listed endpoint(s)` +
+        logger.paint.dim(writes.length ? ` · ${writes.length} write(s)` : ''),
+    );
+    if (writes.length > 0) {
+      logger.warn(
+        `Sending listed writes ${settings.runs} time(s) each: ${writes.map((operation) => `${operation.method} ${new URL(operation.url).pathname}`).join(', ')}. These can create data on the target.`,
+      );
+    }
   }
   if (plan) {
     logger.info(

@@ -125,8 +125,31 @@
         "endpoints": {
           "type": "array",
           "maxItems": 100,
-          "description": "GET API endpoints to measure directly, e.g. \"/api/health\" or \"GET /api/items?page=1\".",
-          "items": { "type": "string", "pattern": "^\\s*(?:[Gg][Ee][Tt]\\s+)?\\S+\\s*$" }
+          "description": "API endpoints to measure directly: \"/api/health\", \"POST /api/search @body.json\", or an object. DELETE is never sent.",
+          "items": {
+            "oneOf": [
+              { "type": "string", "minLength": 1 },
+              {
+                "type": "object",
+                "additionalProperties": false,
+                "required": ["path"],
+                "properties": {
+                  "method": {
+                    "type": "string",
+                    "pattern": "^(?:[Gg][Ee][Tt]|[Pp][Oo][Ss][Tt]|[Pp][Uu][Tt]|[Pp][Aa][Tt][Cc][Hh])$"
+                  },
+                  "path": { "type": "string", "minLength": 1 },
+                  "body": { "description": "Request body: a string as is, anything else as JSON." },
+                  "bodyFile": {
+                    "type": "string",
+                    "minLength": 1,
+                    "description": "File with the request body, relative to the working directory."
+                  },
+                  "contentType": { "type": "string", "minLength": 1 }
+                }
+              }
+            ]
+          }
         },
         "openapi": {
           "type": "string",

@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtemp, readdir, readFile, rm } from 'node:fs/promises';
+import { mkdtemp, readdir, readFile, rm, writeFile } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import { join } from 'node:path';
 import { after, before, describe, it } from 'node:test';
@@ -73,7 +73,7 @@ describe('launchscope api', () => {
     assert.ok(unlinked.durationMs.p50 >= 100, `p50 ${unlinked.durationMs.p50}`);
     assert.ok(unlinked.waitMs.p50 >= 100, 'server wait recorded');
     assert.deepEqual(endpoint('/api/me').discoveredBy, ['listed']);
-    assert.match(result.stderr, /API {6}2 listed GET endpoint\(s\)/);
+    assert.match(result.stderr, /API {6}2 listed endpoint\(s\)\n/);
     assert.match(result.stderr, /Measured 2 endpoint\(s\), 3 run\(s\) each/);
   });
 
@@ -141,13 +141,78 @@ describe('launchscope api', () => {
     assert.match(nothing.stderr, /No API endpoints to measure/);
   });
 
-  it('refuses to list write endpoints', async () => {
-    const write = await runCli(['api', server.origin, '--endpoint', 'POST /api/orders'], {
+  it('sends listed writes with their bodies, and replays them only when allowlisted', async () => {
+    await writeFile(join(workdir, 'search.json'), '{"q":"shoes"}');
+    const before = server.writes.length;
+    const writes = await runCli(
+      [
+        'api',
+        server.origin,
+        '--endpoint',
+        'POST /api/search @search.json',
+        '--endpoint',
+        'POST /api/track viewed=api',
+        '--runs',
+        '2',
+        '--stress',
+        '--stress-stages',
+        '1',
+        '--stress-duration',
+        '1s',
+        '--stress-replay',
+        '^/api/search$',
+        '--json',
+        '-o',
+        'writes',
+      ],
+      { cwd: workdir },
+    );
+    assert.equal(writes.code, 0, writes.stderr);
+    assert.match(writes.stderr, /2 listed endpoint\(s\) · 2 write\(s\)/);
+    assert.match(writes.stderr, /Sending listed writes 2 time\(s\) each/);
+    assert.match(
+      writes.stderr,
+      /Replaying allowlisted writes with their recorded bodies: POST \/api\/search/,
+    );
+
+    const sent = server.writes.slice(before);
+    const tracks = sent.filter((write) => write.path === '/api/track');
+    assert.equal(tracks.length, 2, 'measured twice, never replayed under stress');
+    assert.deepEqual(tracks[0], {
+      method: 'POST',
+      path: '/api/track',
+      body: 'viewed=api',
+      contentType: 'text/plain;charset=UTF-8',
+    });
+    const searches = sent.filter((write) => write.path === '/api/search');
+    assert.ok(searches.length > 2, 'allowlisted write replayed under stress');
+    assert.ok(searches.every((write) => write.body === '{"q":"shoes"}'));
+    assert.equal(searches[0].contentType, 'application/json');
+
+    const summary = JSON.parse(writes.stdout);
+    const search = summary.endpoints.find(
+      (/** @type {{ key: string }} */ e) => e.key === `POST ${server.origin}/api/search`,
+    );
+    assert.equal(search.calls, 2);
+    assert.deepEqual(summary.settings.endpoints, [
+      `POST ${server.origin}/api/search (with body)`,
+      `POST ${server.origin}/api/track (with body)`,
+    ]);
+    const [runName] = await readdir(join(workdir, 'writes'));
+    const files = await readdir(join(workdir, 'writes', runName, 'perf'), { recursive: true });
+    for (const file of files.filter((name) => /\.(json|html|md|csv)$/.test(name))) {
+      const text = await readFile(join(workdir, 'writes', runName, 'perf', file), 'utf8');
+      assert.doesNotMatch(text, /shoes|viewed=api/, `${file} contains a request body`);
+    }
+  });
+
+  it('never sends DELETE', async () => {
+    const write = await runCli(['api', server.origin, '--endpoint', 'DELETE /api/orders/1'], {
       cwd: workdir,
     });
     assert.equal(write.code, 2);
-    assert.match(write.stderr, /only GET endpoints can be listed/);
-    assert.equal(server.hits.get('/api/orders'), undefined);
+    assert.match(write.stderr, /DELETE is not supported/);
+    assert.equal(server.hits.get('/api/orders/1'), undefined);
   });
 });
 
