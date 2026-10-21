@@ -61,7 +61,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  *   call API endpoints directly, without a browser (`launchscope api`).
  * @property {import('./discover/openapi.js').ApiOperation[]} endpoints Endpoints listed with
  *   `--endpoint` or `perf.endpoints`, measured directly over HTTP. Writes carry their body.
- * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
+ * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI document (JSON or YAML).
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
  * @property {boolean} spa Measure client-side navigations between measured routes.
@@ -879,7 +879,9 @@ function resolveTraceContext(cli, config) {
 function resolveOpenApi(value, cwd) {
   if (value === undefined) return undefined;
   if (typeof value !== 'string' || value.trim() === '') {
-    throw new UsageError('--openapi must be "auto", a URL, or a path to an OpenAPI JSON file.');
+    throw new UsageError(
+      '--openapi must be "auto", a URL, or a path to an OpenAPI file (JSON or YAML).',
+    );
   }
   if (value === 'auto' || /^https?:\/\//i.test(value)) return value;
   return resolve(cwd, value);

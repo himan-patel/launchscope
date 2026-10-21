@@ -26,6 +26,10 @@ All notable changes to this project are documented here. The format follows
   `endpoints.csv` show both medians; a `connection-setup` finding fires past the new
   `connectionSetupMs` budget (200 ms warning, 600 ms critical).
 
+- YAML OpenAPI specs: `--openapi` reads JSON or YAML files and URLs, and `auto` also tries
+  `/openapi.yaml`, `/openapi.yml`, and `/swagger.yaml`. YAML is parsed with the core schema and an
+  alias limit, so a spec cannot run code or exhaust memory. Adds the `yaml` dependency.
+
 ### Changed
 
 - Direct API calls are timed with Node's HTTP client instead of `fetch`, so DNS, TCP connect, and

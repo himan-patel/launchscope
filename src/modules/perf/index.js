@@ -27,7 +27,7 @@ export function registerPerf(program, services) {
     )
     .option(
       '--openapi <spec>',
-      'also measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file',
+      'also measure GET operations from an OpenAPI spec (JSON or YAML): "auto", a URL, or a file',
     )
     .option(
       '--repo <dir>',

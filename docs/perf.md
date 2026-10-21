@@ -168,17 +168,19 @@ for a route its client router renders as "not found".
 ```sh
 launchscope perf http://localhost:3000 --openapi auto                   # /openapi.json, /v3/api-docs, …
 launchscope perf http://localhost:3000 --openapi ./openapi.json
+launchscope perf http://localhost:3000 --openapi ./openapi.yaml
 launchscope perf http://localhost:3000 --openapi http://localhost:3000/docs/spec.json
 ```
 
-LaunchScope reads the OpenAPI 3.x or Swagger 2.0 document (JSON) and measures every **GET**
-operation on the target origin directly over HTTP, `--runs` times each, with the same headers
-and session cookies as the browser. That covers endpoints no page calls. Path and required query
+LaunchScope reads the OpenAPI 3.x or Swagger 2.0 document (JSON or YAML) and measures every
+**GET** operation on the target origin directly over HTTP, `--runs` times each, with the same
+headers and session cookies as the browser. That covers endpoints no page calls. Path and required query
 parameters need an `example`, `examples`, `default`, or `enum` value; operations without one, and
 all non-GET or deprecated operations, are listed as skipped instead of being called with
 invented input. Results join the endpoint statistics and findings (the report marks endpoints as
 "page", "API spec only", or both), are replayed by `--stress`, and are listed in `openapi.json`.
-YAML specs are not supported yet. See
+YAML is read with the YAML 1.2 core schema (no custom tags) and at most 100 aliases. With `auto`,
+`/openapi.yaml`, `/openapi.yml`, and `/swagger.yaml` are tried after the JSON locations. See
 [New and reused connections](#new-and-reused-connections) for how direct calls are timed.
 
 ### Measure an API without a browser
