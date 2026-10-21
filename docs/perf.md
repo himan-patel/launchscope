@@ -223,6 +223,26 @@ the `connectionSetupMs` budget, with the DNS, connect, and TLS medians as eviden
 percentiles, and call counts include both calls. Redirects are followed only on the target
 origin, so headers and cookies never go to another host, and certificates are always validated.
 
+#### Import requests from a HAR file
+
+```sh
+launchscope api http://localhost:3000 --import session.har                  # GET API calls only
+launchscope api http://localhost:3000 --import session.har --import-writes  # plus POST/PUT/PATCH
+launchscope perf http://localhost:3000 --import session.har                 # alongside the pages
+```
+
+Record a session in your browser (DevTools → Network → "Save all as HAR"), then measure the API
+calls it made. Requests to the target origin that are API calls (Chromium's `fetch`/`xhr`
+resource types, or JSON, XML, GraphQL, form, or text content in other browsers' HARs) are
+imported once each, up to 100. Recorded POST, PUT, and PATCH requests are imported with their
+bodies only with `--import-writes`; DELETE never. **Headers and cookies in the file are never
+used**, so recorded credentials are not replayed: pass `--header` or `--storage-state` for
+signed-in endpoints. Everything that was not imported is listed in `imports.json` with the
+reason (other origin, not an API call, write, limit), and the report marks imported endpoints
+"imported". Precedence when the same request comes from several sources: `--endpoint`, then
+`--import`, then the OpenAPI spec, then `--repo`. Config: `perf.import` (a path or a list) and
+`perf.importWrites`.
+
 #### Write endpoints (POST, PUT, PATCH)
 
 ```sh
@@ -675,6 +695,8 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 | `--headed`                     | off                              | Show the browser window                                                                               |
 | `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                                                |
 | `--endpoint <spec>`            | –                                | Also measure this endpoint directly, e.g. `/api/health` or `POST /api/x @body.json` (repeatable)      |
+| `--import <file>`              | –                                | Also measure the API requests recorded in a HAR file (repeatable)                                     |
+| `--import-writes`              | off                              | Also import recorded POST/PUT/PATCH requests, with their bodies                                       |
 | `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                                          |
 | `--stress`                     | off                              | Stress test after measuring                                                                           |
 | `--stress-stages <list>`       | 1,5,10,25,50                     | Concurrent users per stage, strictly increasing (max 10 stages, 1000 users)                           |
@@ -693,7 +715,8 @@ route's hop tree.
 
 ### `launchscope api <target>`
 
-Takes `--endpoint <spec>` (repeatable), `--openapi`, `--repo`, `--runs` (calls per endpoint),
+Takes `--endpoint <spec>` (repeatable), `--import <file>` (repeatable), `--import-writes`,
+`--openapi`, `--repo`, `--runs` (calls per endpoint),
 `--timeout` (per request), `--storage-state`, `--header`, the stress options except
 `--stress-include-assets` (`--stress-replay` matches listed writes), `--allow-remote`, `--json`, `--dry-run`,
 `--export-k6`, `--baseline`, and `--fail-on`, with the same defaults and limits as

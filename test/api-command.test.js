@@ -54,6 +54,11 @@ describe('launchscope api', () => {
     await rm(workdir, { recursive: true, force: true });
   });
 
+  /** @param {any} from @param {string} path */
+  const endpointIn = (from, path) =>
+    from.endpoints.find(
+      (/** @type {{ key: string }} */ e) => e.key === `GET ${server.origin}${path}`,
+    );
   /** @param {string} path */
   const endpoint = (path) =>
     summary.endpoints.find(
@@ -141,6 +146,73 @@ describe('launchscope api', () => {
     );
   });
 
+  it('measures requests imported from a HAR file, writes only when asked', async () => {
+    /** @param {string} method @param {string} path @param {object} [postData] */
+    const entry = (method, path, postData) => ({
+      _resourceType: 'fetch',
+      request: {
+        method,
+        url: `${server.origin}${path}`,
+        headers: [{ name: 'Cookie', value: 'sid=recorded' }],
+        ...(postData ? { postData } : {}),
+      },
+      response: { status: 200, content: { mimeType: 'application/json' } },
+    });
+    await writeFile(
+      join(workdir, 'session.har'),
+      JSON.stringify({
+        log: {
+          entries: [
+            entry('GET', '/api/me'),
+            entry('GET', '/api/unlinked'),
+            entry('POST', '/api/track', { mimeType: 'text/plain', text: 'viewed=har' }),
+          ],
+        },
+      }),
+    );
+    const before = server.writes.length;
+    const reads = await runCli(
+      ['api', server.origin, '--import', 'session.har', '--runs', '1', '--json', '-o', 'har'],
+      { cwd: workdir },
+    );
+    assert.equal(reads.code, 0, reads.stderr);
+    assert.match(reads.stderr, /2 request\(s\) imported from .*session\.har \(HAR\)/);
+    const readSummary = JSON.parse(reads.stdout);
+    assert.equal(readSummary.imports.measured, 2);
+    assert.equal(readSummary.openapi, null, 'no spec lookup when importing');
+    assert.deepEqual(endpointIn(readSummary, '/api/unlinked').discoveredBy, ['imported']);
+    assert.equal(server.writes.length, before, 'no writes without --import-writes');
+
+    const withWrites = await runCli(
+      [
+        'api',
+        server.origin,
+        '--import',
+        'session.har',
+        '--import-writes',
+        '--runs',
+        '1',
+        '--json',
+        '-o',
+        'har-writes',
+      ],
+      { cwd: workdir },
+    );
+    assert.equal(withWrites.code, 0, withWrites.stderr);
+    assert.match(withWrites.stderr, /Sending writes 1 time\(s\) each: POST \/api\/track/);
+    const sent = server.writes.slice(before);
+    assert.deepEqual(
+      sent.map(({ path, body }) => ({ path, body })),
+      [{ path: '/api/track', body: 'viewed=har' }],
+    );
+    const [runName] = await readdir(join(workdir, 'har-writes'));
+    const imports = await readFile(
+      join(workdir, 'har-writes', runName, 'perf', 'imports.json'),
+      'utf8',
+    );
+    assert.doesNotMatch(imports, /viewed=har|sid=recorded/);
+  });
+
   it('compares only with earlier API runs', async () => {
     const second = await runCli(
       [
@@ -201,7 +273,7 @@ describe('launchscope api', () => {
     );
     assert.equal(writes.code, 0, writes.stderr);
     assert.match(writes.stderr, /2 listed endpoint\(s\) · 2 write\(s\)/);
-    assert.match(writes.stderr, /Sending listed writes 2 time\(s\) each/);
+    assert.match(writes.stderr, /Sending writes 2 time\(s\) each/);
     assert.match(
       writes.stderr,
       /Replaying allowlisted writes with their recorded bodies: POST \/api\/search/,

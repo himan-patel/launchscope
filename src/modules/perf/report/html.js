@@ -635,12 +635,18 @@ function renderTraces(traces, template) {
 }
 
 /**
- * @param {Array<'page' | 'listed' | 'openapi' | 'repo'> | undefined} sources
+ * @param {Array<'page' | 'listed' | 'imported' | 'openapi' | 'repo'> | undefined} sources
  * @returns {string}
  */
 function sourceLabel(sources) {
   if (!sources || sources.length === 0) return 'page';
-  const names = { page: 'page', listed: 'listed', openapi: 'API spec', repo: 'repository' };
+  const names = {
+    page: 'page',
+    listed: 'listed',
+    imported: 'imported',
+    openapi: 'API spec',
+    repo: 'repository',
+  };
   const labels = sources.map((source) => names[source]);
   return sources.includes('page') ? labels.join(' + ') : `${labels.join(' + ')} only`;
 }

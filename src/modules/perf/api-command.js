@@ -27,6 +27,12 @@ export function registerApi(program, services) {
       collect,
     )
     .option(
+      '--import <file>',
+      'measure the API requests recorded in a HAR file (repeatable)',
+      collect,
+    )
+    .option('--import-writes', 'also import recorded POST/PUT/PATCH requests, with their bodies')
+    .option(
       '--openapi <spec>',
       'measure GET operations from an OpenAPI spec (JSON or YAML): "auto", a URL, or a file (default: auto when nothing is listed)',
     )

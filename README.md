@@ -52,9 +52,9 @@ Bottlenecks · 1 critical, 3 warning, 2 info
   WebSockets, streams, and iframes, reads `Server-Timing`, and can send W3C `traceparent` headers
   so your tracing backend shows the database and service calls behind each page load.
 - **Covers what pages don't call.** Measures endpoints you list (including POST, PUT, and PATCH
-  with a body), from your OpenAPI spec, or from your routes directly, and measures client-side
-  navigations in single-page apps the way users click. `launchscope api` does the same for an
-  API on its own, with no browser.
+  with a body), recorded in a HAR file, from your OpenAPI spec (JSON or YAML), or from your routes
+  directly, and measures client-side navigations in single-page apps the way users click.
+  `launchscope api` does the same for an API on its own, with no browser.
 - **Finds bottlenecks from real numbers.** Slow and unstable endpoints, oversized and
   uncompressed payloads, duplicate calls, sequential API waterfalls, slow navigations, heavy
   pages, failing calls, missing caching, Web Vitals over budget, and regressions against a
@@ -95,6 +95,7 @@ launchscope perf http://localhost:3000 --stress                # add a stress te
 launchscope perf http://localhost:3000 --spa --repo .          # client-side navigations + routes from source
 launchscope perf http://localhost:3000 --baseline latest --fail-on warning   # catch regressions in CI
 launchscope api http://localhost:3000 --endpoint /api/health --endpoint /api/items --stress  # APIs only, no browser
+launchscope api http://localhost:3000 --import session.har                         # API calls from a browser recording
 launchscope login https://staging.example.com/login            # sign in once…
 launchscope perf https://staging.example.com --storage-state .auth/session.json  # …measure signed in
 ```

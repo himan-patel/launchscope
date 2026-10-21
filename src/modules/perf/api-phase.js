@@ -1,6 +1,7 @@
 import { join } from 'node:path';
 import { writeJsonFile } from '../../core/report-dir.js';
 import { templatePath } from './analyze/endpoints.js';
+import { loadImports } from './discover/imports.js';
 import { loadOpenApi, planOperations } from './discover/openapi.js';
 import { measureApiOperations } from './measure-api.js';
 import { loadCookieJar } from './stress/scenario.js';
@@ -11,14 +12,15 @@ const SPEC_TIMEOUT_MS = 10_000;
 /**
  * @typedef {object} ApiPhaseResult
  * @property {import('./discover/openapi.js').OpenApiPlan | null} plan The OpenAPI plan, if any.
+ * @property {import('./discover/imports.js').ImportPlan | null} [imports] Requests imported from files.
  * @property {import('./discover/openapi.js').ApiOperation[]} operations Everything measured.
  */
 
 /**
- * Measures API endpoints directly over HTTP: endpoints listed with `--endpoint`, GET operations
- * from an OpenAPI document, and GET routes found in the repository. A URL that is listed is not
- * measured again for the spec, and repository routes the spec or list already cover are skipped.
- * Results are folded into the endpoint statistics; the OpenAPI plan is written to `openapi.json`.
+ * Measures API endpoints directly over HTTP: endpoints listed with `--endpoint`, requests
+ * imported from HAR files, GET operations from an OpenAPI document, and GET routes found in the
+ * repository, in that order of precedence. Results are folded into the endpoint statistics; the
+ * OpenAPI plan is written to `openapi.json` and the import plan to `imports.json`.
  *
  * @param {object} options
  * @param {import('./settings.js').PerfSettings} options.settings
@@ -38,18 +40,43 @@ export async function runApiPhase({
   repoApis = [],
 }) {
   const listed = settings.endpoints;
-  if ((!settings.openapi && repoApis.length === 0 && listed.length === 0) || signal.aborted)
-    return null;
+  const nothingToDo =
+    !settings.openapi &&
+    repoApis.length === 0 &&
+    listed.length === 0 &&
+    settings.imports.length === 0;
+  if (nothingToDo || signal.aborted) return null;
+  const imports =
+    settings.imports.length > 0
+      ? await loadImports({
+          files: settings.imports,
+          targetUrl: settings.targetUrl,
+          includeWrites: settings.importWrites,
+          limit: MAX_OPERATIONS,
+        })
+      : null;
   const plan = settings.openapi ? await planFromSpec(settings, logger) : null;
-  // Spec and repository operations are GETs, so only listed GETs can duplicate them.
-  const listedGets = listed.filter((operation) => !operation.method);
-  const listedUrls = new Set(listedGets.map((operation) => operation.url));
-  const specOperations = (plan?.operations ?? []).filter(
-    (operation) => !listedUrls.has(operation.url),
-  );
+
+  // Earlier sources win: an operation already measured (same method and URL) is not measured
+  // again, and repository routes are skipped when any source covers their path template.
+  /** @type {Set<string>} */
+  const seen = new Set();
+  /** @param {import('./discover/openapi.js').ApiOperation[]} operations */
+  const unseen = (operations) =>
+    operations.filter((operation) => {
+      const key = `${operation.method ?? 'GET'} ${operation.url}`;
+      if (seen.has(key)) return false;
+      seen.add(key);
+      return true;
+    });
+  const listedOperations = unseen(listed);
+  const importedOperations = unseen(imports?.operations ?? []);
+  const specOperations = unseen(plan?.operations ?? []);
 
   const covered = new Set(
-    [...listedGets, ...specOperations].map((operation) => templateKey(operation.url)),
+    [...listedOperations, ...importedOperations, ...specOperations]
+      .filter((operation) => !operation.method)
+      .map((operation) => templateKey(operation.url)),
   );
   /** @type {import('./discover/openapi.js').ApiOperation[]} */
   const repoOperations = [];
@@ -59,19 +86,31 @@ export async function runApiPhase({
     covered.add(templateKey(url));
     repoOperations.push({ url, path, operationId: null });
   }
-  if (listed.length === 0 && specOperations.length === 0 && repoOperations.length === 0)
-    return plan ? { plan, operations: [] } : null;
+  const all = [...listedOperations, ...importedOperations, ...specOperations, ...repoOperations];
+  if (all.length === 0) {
+    await writePlans({ settings, perfDirectory, plan, imports });
+    return plan || imports ? { plan, imports, operations: [] } : null;
+  }
 
   logger.info('');
-  if (listed.length > 0) {
-    const writes = listed.filter((operation) => operation.method);
+  if (listedOperations.length > 0) {
     logger.info(
-      `${logger.paint.bold('API')}      ${listed.length} listed endpoint(s)` +
-        logger.paint.dim(writes.length ? ` · ${writes.length} write(s)` : ''),
+      `${logger.paint.bold('API')}      ${listedOperations.length} listed endpoint(s)` +
+        logger.paint.dim(writesNote(listedOperations)),
     );
-    if (writes.length > 0) {
-      logger.warn(
-        `Sending listed writes ${settings.runs} time(s) each: ${writes.map((operation) => `${operation.method} ${new URL(operation.url).pathname}`).join(', ')}. These can create data on the target.`,
+  }
+  if (imports) {
+    for (const source of imports.sources) {
+      logger.info(
+        `${logger.paint.bold('API')}      ${source.operations} request(s) imported from ${source.file} (${source.format.toUpperCase()})`,
+      );
+    }
+    const skippedCount = imports.skipped.reduce((sum, entry) => sum + entry.count, 0);
+    if (skippedCount > 0) {
+      logger.info(
+        logger.paint.dim(
+          `         ${skippedCount} recorded request(s) not imported; see imports.json`,
+        ),
       );
     }
   }
@@ -86,10 +125,17 @@ export async function runApiPhase({
       `${logger.paint.bold('API')}      ${repoOperations.length} GET route(s) from the repository`,
     );
   }
+  const writes = all.filter((operation) => operation.method);
+  if (writes.length > 0) {
+    logger.warn(
+      `Sending writes ${settings.runs} time(s) each: ${writes.map((operation) => `${operation.method} ${new URL(operation.url).pathname}`).join(', ')}. These can create data on the target.`,
+    );
+  }
 
   const cookieFor = await loadCookieJar(settings.storageStatePath);
   for (const [operations, source] of /** @type {const} */ ([
-    [listed, 'listed'],
+    [listedOperations, 'listed'],
+    [importedOperations, 'imported'],
     [specOperations, 'openapi'],
     [repoOperations, 'repo'],
   ])) {
@@ -106,6 +152,21 @@ export async function runApiPhase({
     accumulator.addApiLoads(loads, settings.targetUrl.origin, source);
   }
 
+  await writePlans({ settings, perfDirectory, plan, imports });
+  return { plan, imports, operations: all };
+}
+
+/**
+ * Writes `openapi.json` and `imports.json`. Imported URLs are listed without query strings and
+ * bodies are never written, since recorded requests can carry tokens.
+ *
+ * @param {object} options
+ * @param {import('./settings.js').PerfSettings} options.settings
+ * @param {string} options.perfDirectory
+ * @param {import('./discover/openapi.js').OpenApiPlan | null} options.plan
+ * @param {import('./discover/imports.js').ImportPlan | null} options.imports
+ */
+async function writePlans({ settings, perfDirectory, plan, imports }) {
   if (plan) {
     await writeJsonFile(join(perfDirectory, 'openapi.json'), {
       source: plan.source,
@@ -115,7 +176,24 @@ export async function runApiPhase({
       runs: settings.runs,
     });
   }
-  return { plan, operations: [...listed, ...specOperations, ...repoOperations] };
+  if (imports) {
+    await writeJsonFile(join(perfDirectory, 'imports.json'), {
+      sources: imports.sources,
+      measured: imports.operations.map((operation) => ({
+        method: operation.method ?? 'GET',
+        path: operation.path,
+        withBody: operation.body !== null && operation.body !== undefined,
+      })),
+      skipped: imports.skipped,
+      runs: settings.runs,
+    });
+  }
+}
+
+/** @param {import('./discover/openapi.js').ApiOperation[]} operations */
+function writesNote(operations) {
+  const count = operations.filter((operation) => operation.method).length;
+  return count ? ` · ${count} write(s)` : '';
 }
 
 /**
