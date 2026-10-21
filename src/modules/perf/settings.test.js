@@ -1,5 +1,7 @@
 import assert from 'node:assert/strict';
-import { resolve } from 'node:path';
+import { mkdtempSync, rmSync, writeFileSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import { join, resolve } from 'node:path';
 import { describe, it } from 'node:test';
 import { UsageError } from '../../core/errors.js';
 import {
@@ -218,14 +220,71 @@ describe('endpoint settings', () => {
     assert.equal(resolveWith({ config: { endpoints: ['/api/me'] } }).endpoints.length, 1);
   });
 
-  it('refuses writes, other origins, and malformed entries', () => {
-    assert.throws(() => resolveWith({ cli: { endpoint: ['POST /api/orders'] } }), /only GET/);
+  it('accepts listed writes with inline, file, and config bodies', () => {
+    const dir = mkdtempSync(join(tmpdir(), 'launchscope-body-'));
+    try {
+      writeFileSync(join(dir, 'search.json'), '{"q":"shoes"}');
+      const settings = resolveWith({
+        cwd: dir,
+        cli: {
+          endpoint: ['POST /api/search @search.json', 'put /api/note hello world', 'PATCH /x'],
+        },
+      });
+      assert.deepEqual(
+        settings.endpoints.map(({ method, body, contentType }) => ({ method, body, contentType })),
+        [
+          { method: 'POST', body: '{"q":"shoes"}', contentType: 'application/json' },
+          { method: 'PUT', body: 'hello world', contentType: 'text/plain;charset=UTF-8' },
+          { method: 'PATCH', body: null, contentType: null },
+        ],
+      );
+      const fromConfig = resolveWith({
+        cwd: dir,
+        config: {
+          endpoints: [
+            { method: 'post', path: '/api/search', body: { q: 'boots' } },
+            { method: 'POST', path: '/api/raw', bodyFile: 'search.json', contentType: 'text/x' },
+            { path: '/api/me' },
+          ],
+        },
+      }).endpoints;
+      assert.equal(fromConfig[0].body, '{"q":"boots"}');
+      assert.equal(fromConfig[0].contentType, 'application/json');
+      assert.equal(fromConfig[1].contentType, 'text/x');
+      assert.equal(fromConfig[2].method, undefined, 'GET is the default');
+      assert.throws(
+        () => resolveWith({ cwd: dir, cli: { endpoint: ['POST /a @missing.json'] } }),
+        /could not read body file/,
+      );
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it('refuses DELETE, GET bodies, other origins, and malformed entries', () => {
+    assert.throws(
+      () => resolveWith({ cli: { endpoint: ['DELETE /api/orders/1'] } }),
+      /DELETE is not supported/,
+    );
+    assert.throws(
+      () => resolveWith({ cli: { endpoint: ['GET /api/me {"a":1}'] } }),
+      /cannot have a body/,
+    );
+    assert.throws(
+      () => resolveWith({ config: { endpoints: [{ path: '/x', body: 'a', bodyFile: 'b' }] } }),
+      /not both/,
+    );
+    assert.throws(() => resolveWith({ config: { endpoints: [{ url: '/x' }] } }), /Unknown key/);
+    assert.throws(
+      () => resolveWith({ cli: { endpoint: ['POST /x ' + 'a'.repeat(1024 * 1024 + 1)] } }),
+      /larger than 1 MB/,
+    );
     assert.throws(
       () => resolveWith({ cli: { endpoint: ['https://other.test/api'] } }),
       /not on the target origin/,
     );
-    assert.throws(() => resolveWith({ cli: { endpoint: ['GET /a /b'] } }), /must look like/);
-    assert.throws(() => resolveWith({ config: { endpoints: [42] } }), /must be strings/);
+    assert.throws(() => resolveWith({ cli: { endpoint: ['/a /b'] } }), /must look like/);
+    assert.throws(() => resolveWith({ config: { endpoints: [42] } }), /string or an object/);
   });
 });
 
@@ -254,11 +313,15 @@ describe('api mode', () => {
 
 describe('toReportableSettings', () => {
   it('redacts query values of listed endpoints', () => {
-    const settings = resolveWith({ cli: { endpoint: ['/api/items?api_key=secret&page=2', '/x'] } });
-    assert.deepEqual(toReportableSettings(settings).endpoints, [
-      'http://localhost:3000/api/items?api_key=[redacted]&page=[redacted]',
-      'http://localhost:3000/x',
+    const settings = resolveWith({
+      cli: { endpoint: ['/api/items?api_key=secret&page=2', 'POST /x {"password":"hunter2"}'] },
+    });
+    const reportable = toReportableSettings(settings);
+    assert.deepEqual(reportable.endpoints, [
+      'GET http://localhost:3000/api/items?api_key=[redacted]&page=[redacted]',
+      'POST http://localhost:3000/x (with body)',
     ]);
+    assert.doesNotMatch(JSON.stringify(reportable), /hunter2|secret/);
   });
 
   it('redacts header values so secrets never reach report files', () => {

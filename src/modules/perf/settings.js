@@ -1,3 +1,4 @@
+import { readFileSync } from 'node:fs';
 import { resolve } from 'node:path';
 import { parseDuration } from '../../core/duration.js';
 import { UsageError } from '../../core/errors.js';
@@ -59,7 +60,7 @@ import { resolveBudgets } from './analyze/budgets.js';
  * @property {'pages' | 'api'} mode `pages`: measure routes in a browser (`launchscope perf`). `api`:
  *   call API endpoints directly, without a browser (`launchscope api`).
  * @property {import('./discover/openapi.js').ApiOperation[]} endpoints Endpoints listed with
- *   `--endpoint` or `perf.endpoints`, measured directly over HTTP.
+ *   `--endpoint` or `perf.endpoints`, measured directly over HTTP. Writes carry their body.
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI JSON document.
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
@@ -220,7 +221,7 @@ export function resolvePerfSettings({ target, cli, config, cwd, mode = 'pages' }
   const { url: targetUrl, scope } = parseTarget(target);
 
   const routes = mode === 'api' ? [] : parseRoutes(cli.routes ?? section.routes, targetUrl);
-  const endpoints = parseEndpoints(cli.endpoint ?? section.endpoints, targetUrl);
+  const endpoints = parseEndpoints(cli.endpoint ?? section.endpoints, targetUrl, cwd);
   const repo = resolveRepo(cli.repo ?? section.repo, cwd);
   // With nothing listed, `launchscope api` looks for a spec at the usual locations.
   const openapi =
@@ -337,8 +338,8 @@ export function resolvePerfSettings({ target, cli, config, cwd, mode = 'pages' }
 }
 
 /**
- * A copy of the settings that is safe to write into reports: header values and the query values
- * of listed endpoints (which may carry keys or tokens) are redacted.
+ * A copy of the settings that is safe to write into reports: header values, the query values
+ * of listed endpoints (which may carry keys or tokens), and request bodies are redacted.
  *
  * @param {PerfSettings} settings
  */
@@ -346,7 +347,11 @@ export function toReportableSettings(settings) {
   return {
     ...settings,
     targetUrl: settings.targetUrl.href,
-    endpoints: settings.endpoints.map(({ url }) => redactQuery(url)),
+    // Bodies are never written to reports; only their presence is.
+    endpoints: settings.endpoints.map(
+      ({ url, method = 'GET', body }) =>
+        `${method} ${redactQuery(url)}${body === null || body === undefined ? '' : ' (with body)'}`,
+    ),
     exclude: settings.exclude.map((pattern) => pattern.source),
     headers: Object.fromEntries(Object.keys(settings.headers).map((name) => [name, '[redacted]'])),
   };
@@ -405,35 +410,40 @@ function parseRoutes(value, targetUrl) {
 }
 
 /**
- * Endpoints are `"/path"` or `"GET /path"` (paths or same-origin URLs). Only GET is accepted, so
- * a listed endpoint can never write data.
+ * Endpoints are `"/path"`, `"METHOD /path"`, or `"METHOD /path <body>"`, where the body is inline
+ * text or `@file` (paths or same-origin URLs). Config entries may also be objects:
+ * `{ method, path, body, bodyFile, contentType }`. POST, PUT, and PATCH are sent only because the
+ * user listed them; DELETE and other methods are refused. Bodies stay in memory and never reach
+ * report files.
  *
  * @param {unknown} value
  * @param {URL} targetUrl
+ * @param {string} cwd Base for `@file` and `bodyFile` paths.
  * @returns {import('./discover/openapi.js').ApiOperation[]}
  */
-function parseEndpoints(value, targetUrl) {
+function parseEndpoints(value, targetUrl, cwd) {
   if (value === undefined) return [];
-  const items = typeof value === 'string' ? [value] : value;
-  if (!Array.isArray(items) || !items.every((item) => typeof item === 'string')) {
+  const items = typeof value === 'string' || isPlainObject(value) ? [value] : value;
+  if (!Array.isArray(items)) {
     throw new UsageError(
-      'Endpoints must be strings like "/api/health" or "GET /api/items?page=1".',
+      'Endpoints must be a list like ["/api/health", "POST /api/search @q.json"].',
     );
   }
   /** @type {Map<string, import('./discover/openapi.js').ApiOperation>} */
   const endpoints = new Map();
-  for (const raw of items.map((item) => item.trim()).filter(Boolean)) {
-    const match = /^(?:([A-Za-z]+)\s+)?(\S+)$/.exec(raw);
-    if (!match) throw new UsageError(`Endpoint "${raw}" must look like "/path" or "GET /path".`);
-    const method = (match[1] ?? 'GET').toUpperCase();
-    if (method !== 'GET') {
-      throw new UsageError(`Endpoint "${raw}": only GET endpoints can be listed.`, {
-        hint: 'Write requests are never sent by --endpoint.',
+  for (const item of items) {
+    const entry = typeof item === 'string' ? parseEndpointString(item) : parseEndpointObject(item);
+    if (!entry) continue;
+    const { raw } = entry;
+    const method = ENDPOINT_METHODS.find((choice) => choice === entry.method);
+    if (method === undefined) {
+      throw new UsageError(`Endpoint "${raw}": ${entry.method} is not supported.`, {
+        hint: 'List GET endpoints, or POST, PUT, and PATCH with a body. DELETE is never sent.',
       });
     }
     let url;
     try {
-      url = new URL(match[2], targetUrl);
+      url = new URL(entry.path, targetUrl);
     } catch {
       throw new UsageError(`Endpoint "${raw}" is not a valid path or URL.`);
     }
@@ -443,12 +453,163 @@ function parseEndpoints(value, targetUrl) {
       });
     }
     url.hash = '';
-    endpoints.set(url.href, { url: url.href, path: url.pathname, operationId: null });
+    const body = readEndpointBody(entry, raw, cwd);
+    if (body !== null && method === 'GET') {
+      throw new UsageError(`Endpoint "${raw}": GET requests cannot have a body.`);
+    }
+    endpoints.set(`${method} ${url.href}`, {
+      url: url.href,
+      path: url.pathname,
+      operationId: null,
+      ...(method === 'GET'
+        ? {}
+        : {
+            method,
+            body,
+            contentType: entry.contentType ?? (body === null ? null : guessContentType(body)),
+          }),
+    });
   }
   if (endpoints.size > LIMITS.endpoints) {
     throw new UsageError(`At most ${LIMITS.endpoints} endpoints can be listed.`);
   }
   return [...endpoints.values()];
+}
+
+const ENDPOINT_METHODS = /** @type {const} */ (['GET', 'POST', 'PUT', 'PATCH']);
+const MAX_BODY_BYTES = 1024 * 1024;
+
+/**
+ * @typedef {object} EndpointEntry
+ * @property {string} raw For error messages.
+ * @property {string} method Uppercased.
+ * @property {string} path
+ * @property {string | null} inlineBody
+ * @property {string | null} bodyFile
+ * @property {string | null} contentType
+ */
+
+/**
+ * @param {string} item
+ * @returns {EndpointEntry | null}
+ */
+function parseEndpointString(item) {
+  const raw = item.trim();
+  if (raw === '') return null;
+  const match = /^(?:([A-Za-z]+)\s+)?(\S+)(?:\s+([\s\S]+))?$/.exec(raw);
+  // Without a method, anything after the path is a typo rather than a body.
+  if (!match || (!match[1] && match[3])) {
+    throw new UsageError(
+      `Endpoint "${raw}" must look like "/path", "GET /path", or "POST /path @body.json".`,
+    );
+  }
+  const rest = match[3]?.trim() ?? null;
+  return {
+    raw,
+    method: (match[1] ?? 'GET').toUpperCase(),
+    path: match[2],
+    inlineBody: rest && !rest.startsWith('@') ? rest : null,
+    bodyFile: rest?.startsWith('@') ? rest.slice(1) : null,
+    contentType: null,
+  };
+}
+
+const ENDPOINT_OBJECT_KEYS = new Set(['method', 'path', 'body', 'bodyFile', 'contentType']);
+
+/**
+ * @param {unknown} item
+ * @returns {EndpointEntry}
+ */
+function parseEndpointObject(item) {
+  if (!isPlainObject(item)) {
+    throw new UsageError('Each endpoint must be a string or an object with "path".');
+  }
+  const record = /** @type {Record<string, unknown>} */ (item);
+  const unknown = Object.keys(record).filter((key) => !ENDPOINT_OBJECT_KEYS.has(key));
+  if (unknown.length > 0) {
+    throw new UsageError(`Unknown key(s) in endpoint: ${unknown.join(', ')}.`, {
+      hint: `Allowed keys: ${[...ENDPOINT_OBJECT_KEYS].join(', ')}.`,
+    });
+  }
+  const { method = 'GET', path, body, bodyFile, contentType } = record;
+  if (typeof path !== 'string' || path.trim() === '') {
+    throw new UsageError('Each endpoint object needs a "path" string.');
+  }
+  if (typeof method !== 'string')
+    throw new UsageError(`Endpoint "${path}": "method" must be a string.`);
+  if (body !== undefined && bodyFile !== undefined) {
+    throw new UsageError(`Endpoint "${path}": use "body" or "bodyFile", not both.`);
+  }
+  if (bodyFile !== undefined && (typeof bodyFile !== 'string' || bodyFile.trim() === '')) {
+    throw new UsageError(`Endpoint "${path}": "bodyFile" must be a path.`);
+  }
+  if (
+    contentType !== undefined &&
+    (typeof contentType !== 'string' || /[\r\n]/.test(contentType))
+  ) {
+    throw new UsageError(`Endpoint "${path}": "contentType" must be a single-line string.`);
+  }
+  return {
+    raw: `${method.toUpperCase()} ${path}`,
+    method: method.toUpperCase(),
+    path: path.trim(),
+    // Objects and arrays are sent as JSON; strings as they are.
+    inlineBody:
+      body === undefined || body === null
+        ? null
+        : typeof body === 'string'
+          ? body
+          : JSON.stringify(body),
+    bodyFile: /** @type {string | undefined} */ (bodyFile) ?? null,
+    contentType:
+      /** @type {string | undefined} */ (contentType) ??
+      (body !== undefined && body !== null && typeof body !== 'string' ? 'application/json' : null),
+  };
+}
+
+/**
+ * @param {EndpointEntry} entry
+ * @param {string} raw
+ * @param {string} cwd
+ * @returns {string | null}
+ */
+function readEndpointBody(entry, raw, cwd) {
+  let body = entry.inlineBody;
+  if (entry.bodyFile !== null) {
+    const path = resolve(cwd, entry.bodyFile);
+    try {
+      body = readFileSync(path, 'utf8');
+    } catch (error) {
+      throw new UsageError(`Endpoint "${raw}": could not read body file ${path}.`, {
+        cause: error,
+      });
+    }
+  }
+  if (body !== null && Buffer.byteLength(body) > MAX_BODY_BYTES) {
+    throw new UsageError(`Endpoint "${raw}": the request body is larger than 1 MB.`);
+  }
+  return body;
+}
+
+/**
+ * @param {string} body
+ * @returns {string}
+ */
+function guessContentType(body) {
+  try {
+    JSON.parse(body);
+    return 'application/json';
+  } catch {
+    return 'text/plain;charset=UTF-8';
+  }
+}
+
+/**
+ * @param {unknown} value
+ * @returns {value is Record<string, unknown>}
+ */
+function isPlainObject(value) {
+  return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
 
 /**

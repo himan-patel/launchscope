@@ -21,7 +21,11 @@ export function registerApi(program, services) {
     .description('measure API endpoints directly (no browser), find bottlenecks, and stress test')
     .argument('<target>', 'base URL of the API, e.g. http://localhost:3000')
     .optionsGroup('Endpoints:')
-    .option('--endpoint <path>', 'GET endpoint to measure, e.g. /api/health (repeatable)', collect)
+    .option(
+      '--endpoint <spec>',
+      'endpoint to measure: "/api/health", or "POST /api/search @body.json" (repeatable)',
+      collect,
+    )
     .option(
       '--openapi <spec>',
       'measure GET operations from an OpenAPI JSON spec: "auto", a URL, or a file (default: auto when nothing is listed)',
@@ -48,6 +52,11 @@ export function registerApi(program, services) {
     )
     .option('--stress-duration <duration>', 'duration of each stage (default: 10s)')
     .option('--stress-timeout <duration>', 'per-request timeout under stress (default: 10s)')
+    .option(
+      '--stress-replay <regex>',
+      'also replay listed POST/PUT/PATCH endpoints whose path matches, with their bodies (repeatable)',
+      collect,
+    )
     .option('--allow-remote', 'allow stress testing a public host you own (use with care)')
     .optionsGroup('Output:')
     .option('--json', 'print the summary as JSON to stdout')

@@ -11,11 +11,15 @@ All notable changes to this project are documented here. The format follows
 - `launchscope api <target>`: measures API endpoints directly over HTTP, with no browser. Endpoints
   come from `--endpoint` (repeatable), an OpenAPI spec (found automatically when nothing is
   listed), or `--repo`, and get the same endpoint statistics, findings, budgets, stress test, k6
-  export, baseline comparison, `--fail-on`, and report as `launchscope perf`. Only GET endpoints
-  can be listed. Summaries gain `mode` (`pages` or `api`), and `--baseline latest` only compares
-  runs of the same mode.
-- `launchscope perf --endpoint <path>` and config `perf.endpoints`: also measure listed GET
+  export, baseline comparison, `--fail-on`, and report as `launchscope perf`. Summaries gain
+  `mode` (`pages` or `api`), and `--baseline latest` only compares runs of the same mode.
+- `launchscope perf --endpoint <spec>` and config `perf.endpoints`: also measure listed
   endpoints directly; the report labels them "listed".
+- Listed write endpoints: `--endpoint "POST /api/search @body.json"` (or an inline body), and
+  config objects `{ method, path, body | bodyFile, contentType }`. POST, PUT, and PATCH are sent
+  `--runs` times because they were listed, with a console warning; under `--stress` they are
+  replayed only when their path matches `--stress-replay` (now also on `launchscope api`).
+  Bodies are capped at 1 MB and never written to reports. DELETE is always refused.
 
 ## [0.4.0] - 2026-10-19
 

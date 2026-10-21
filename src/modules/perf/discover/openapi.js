@@ -25,6 +25,10 @@ const MAX_SPEC_BYTES = 10 * 1024 * 1024;
  * @property {string} url Concrete URL to call.
  * @property {string} path Path template from the spec, e.g. `/api/items/{id}`.
  * @property {string | null} operationId
+ * @property {'POST' | 'PUT' | 'PATCH'} [method] Omitted for GET. Writes come only from endpoints
+ *   the user listed, never from a spec.
+ * @property {string | null} [body] Request body for writes, held in memory only.
+ * @property {string | null} [contentType]
  */
 
 /**

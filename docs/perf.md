@@ -199,14 +199,50 @@ Each endpoint is called `--runs` times, one after another, with your `--header` 
 `--stress` and `--export-k6` replays, `--baseline` comparison, `--fail-on` exit code, and report
 as a page run.
 
-Listed endpoints are paths or URLs on the target origin, optionally prefixed with `GET`. Other
-methods are refused, so `--endpoint` never writes data. `launchscope api` reads the `perf`
-section of the config file (headers, budgets, stress settings); page-only settings such as
-`routes`, `spa`, and `lighthouse` are ignored. `--baseline latest` only picks earlier
-`launchscope api` runs, and `launchscope perf` only picks earlier page runs.
+Listed endpoints are paths or URLs on the target origin, optionally prefixed with a method.
+`launchscope api` reads the `perf` section of the config file (headers, budgets, stress
+settings); page-only settings such as `routes`, `spa`, and `lighthouse` are ignored.
+`--baseline latest` only picks earlier `launchscope api` runs, and `launchscope perf` only picks
+earlier page runs.
 
-`launchscope perf --endpoint <path>` measures listed endpoints alongside the pages; the report
+`launchscope perf --endpoint <spec>` measures listed endpoints alongside the pages; the report
 marks them "listed".
+
+#### Write endpoints (POST, PUT, PATCH)
+
+```sh
+launchscope api http://localhost:3000 --endpoint "POST /api/search @search.json"   # body from a file
+launchscope api http://localhost:3000 --endpoint 'POST /api/search {"q":"shoes"}'  # inline body
+launchscope api http://localhost:3000 --endpoint "POST /api/search @search.json" \
+  --stress --stress-replay '^/api/search$'                                         # also under load
+```
+
+In the config file an endpoint can also be an object:
+
+```json
+{
+  "perf": {
+    "endpoints": [
+      "/api/health",
+      { "method": "POST", "path": "/api/search", "body": { "q": "shoes" } },
+      {
+        "method": "PUT",
+        "path": "/api/notes/1",
+        "bodyFile": "note.xml",
+        "contentType": "application/xml"
+      }
+    ]
+  }
+}
+```
+
+A body that parses as JSON is sent as `application/json`, other text as `text/plain`, unless
+`contentType` says otherwise; object and array `body` values are sent as JSON. Bodies are at most
+1 MB, held in memory only, and never written to any report file (`settings.json` notes only
+"with body"). Writes run because you listed them, so the console lists every write it sends.
+Under `--stress` a listed write is replayed only when its path also matches `--stress-replay`,
+and `--export-k6` lists writes in a comment instead of exporting their bodies. DELETE and other
+methods are always refused. Use writes against local or staging environments.
 
 ### Measure pages behind a login
 
@@ -622,7 +658,7 @@ Stress tests generate real load, so they are deliberately hard to misuse:
 | `--browser-channel <name>`     | bundled Chromium                 | Use an installed browser: `chrome`, `msedge`, …                                                       |
 | `--headed`                     | off                              | Show the browser window                                                                               |
 | `--storage-state <file>`       | –                                | Saved session from `launchscope login`                                                                |
-| `--endpoint <path>`            | –                                | Also measure this GET endpoint directly, e.g. `/api/health` (repeatable, max 100)                     |
+| `--endpoint <spec>`            | –                                | Also measure this endpoint directly, e.g. `/api/health` or `POST /api/x @body.json` (repeatable)      |
 | `-H, --header <header>`        | –                                | `Name: value` header for the target origin only (repeatable)                                          |
 | `--stress`                     | off                              | Stress test after measuring                                                                           |
 | `--stress-stages <list>`       | 1,5,10,25,50                     | Concurrent users per stage, strictly increasing (max 10 stages, 1000 users)                           |
@@ -641,9 +677,9 @@ route's hop tree.
 
 ### `launchscope api <target>`
 
-Takes `--endpoint <path>` (repeatable), `--openapi`, `--repo`, `--runs` (calls per endpoint),
+Takes `--endpoint <spec>` (repeatable), `--openapi`, `--repo`, `--runs` (calls per endpoint),
 `--timeout` (per request), `--storage-state`, `--header`, the stress options except
-`--stress-include-assets` and `--stress-replay`, `--allow-remote`, `--json`, `--dry-run`,
+`--stress-include-assets` (`--stress-replay` matches listed writes), `--allow-remote`, `--json`, `--dry-run`,
 `--export-k6`, `--baseline`, and `--fail-on`, with the same defaults and limits as
 `launchscope perf`. See [Measure an API without a browser](#measure-an-api-without-a-browser).
 

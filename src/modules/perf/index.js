@@ -21,8 +21,8 @@ export function registerPerf(program, services) {
     .option('-r, --routes <paths>', 'comma-separated routes to measure, e.g. /,/pricing,/app')
     .option('--max-routes <n>', `maximum routes to measure (default: ${PERF_DEFAULTS.maxRoutes})`)
     .option(
-      '--endpoint <path>',
-      'also measure this GET API endpoint directly, e.g. /api/health (repeatable)',
+      '--endpoint <spec>',
+      'also measure this endpoint directly: "/api/health" or "POST /api/search @body.json" (repeatable)',
       collect,
     )
     .option(

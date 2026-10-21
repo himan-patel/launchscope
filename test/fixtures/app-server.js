@@ -211,7 +211,7 @@ const SLOW_CONCURRENCY = 4;
  * @typedef {object} FixtureServer
  * @property {string} origin e.g. http://127.0.0.1:54321
  * @property {Map<string, number>} hits Request counts by pathname.
- * @property {Array<{ method: string, path: string, body: string }>} writes Every POST/PUT/PATCH body received.
+ * @property {Array<{ method: string, path: string, body: string, contentType: string | undefined }>} writes Every POST/PUT/PATCH body received.
  * @property {Array<{ path: string, traceparent: string }>} traceparents Every traceparent header received.
  * @property {(ms: number) => void} setSlowDelay Changes how long /api/slow takes (default 250 ms).
  * @property {() => Promise<void>} close
@@ -227,7 +227,7 @@ export async function startFixtureServer() {
   let slowDelayMs = 250;
   /** @type {Array<{ path: string, traceparent: string }>} */
   const traceparents = [];
-  /** @type {Array<{ method: string, path: string, body: string }>} */
+  /** @type {Array<{ method: string, path: string, body: string, contentType: string | undefined }>} */
   const writes = [];
   /** @type {Array<() => void>} */
   const slowQueue = [];
@@ -301,7 +301,12 @@ export async function startFixtureServer() {
         if (request.method === 'GET') return send(405, 'text/plain', 'use POST');
         let body = '';
         for await (const chunk of request) body += chunk;
-        writes.push({ method: request.method ?? '', path: url.pathname, body });
+        writes.push({
+          method: request.method ?? '',
+          path: url.pathname,
+          body,
+          contentType: request.headers['content-type'],
+        });
         if (url.pathname === '/api/track') {
           response.writeHead(204);
           return response.end();

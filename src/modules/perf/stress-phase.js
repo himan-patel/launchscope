@@ -39,7 +39,8 @@ export async function runStressPhase({
     targetOrigin: settings.targetUrl.origin,
     includeAssets: settings.stress.includeAssets,
   });
-  if (apiOperations.length > 0) scenarios.push(apiScenario(apiOperations));
+  const api = apiScenario(apiOperations, { replay: settings.stress.replay });
+  if (api.levels[0].length > 0) scenarios.push(api);
   if (scenarios.length === 0) {
     logger.warn('Skipping the stress test: no route loaded successfully on the target origin.');
     return null;

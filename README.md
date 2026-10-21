@@ -51,9 +51,10 @@ Bottlenecks · 1 critical, 3 warning, 2 info
   API calls that wait on each other, follows redirects, splits GraphQL by operation, tracks
   WebSockets, streams, and iframes, reads `Server-Timing`, and can send W3C `traceparent` headers
   so your tracing backend shows the database and service calls behind each page load.
-- **Covers what pages don't call.** Measures GET endpoints you list, from your OpenAPI spec, or
-  from your routes directly, and measures client-side navigations in single-page apps the way
-  users click. `launchscope api` does the same for an API on its own, with no browser.
+- **Covers what pages don't call.** Measures endpoints you list (including POST, PUT, and PATCH
+  with a body), from your OpenAPI spec, or from your routes directly, and measures client-side
+  navigations in single-page apps the way users click. `launchscope api` does the same for an
+  API on its own, with no browser.
 - **Finds bottlenecks from real numbers.** Slow and unstable endpoints, oversized and
   uncompressed payloads, duplicate calls, sequential API waterfalls, slow navigations, heavy
   pages, failing calls, missing caching, Web Vitals over budget, and regressions against a
