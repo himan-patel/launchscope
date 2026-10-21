@@ -151,6 +151,17 @@
             ]
           }
         },
+        "import": {
+          "description": "HAR file(s) whose recorded API requests are measured directly.",
+          "oneOf": [
+            { "type": "string", "minLength": 1 },
+            { "type": "array", "items": { "type": "string", "minLength": 1 } }
+          ]
+        },
+        "importWrites": {
+          "type": "boolean",
+          "description": "Also import recorded POST/PUT/PATCH requests, with their bodies."
+        },
         "openapi": {
           "type": "string",
           "minLength": 1,

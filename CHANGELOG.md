@@ -30,6 +30,11 @@ All notable changes to this project are documented here. The format follows
   `/openapi.yaml`, `/openapi.yml`, and `/swagger.yaml`. YAML is parsed with the core schema and an
   alias limit, so a spec cannot run code or exhaust memory. Adds the `yaml` dependency.
 
+- `--import <file>` (repeatable, on `perf` and `api`; config `perf.import`): measures the API
+  calls recorded in a HAR file. Only requests to the target origin that are API calls are
+  imported; recorded writes only with `--import-writes`, DELETE never. Headers and cookies in the
+  file are never used. `imports.json` lists what was skipped and why.
+
 ### Changed
 
 - Direct API calls are timed with Node's HTTP client instead of `fetch`, so DNS, TCP connect, and

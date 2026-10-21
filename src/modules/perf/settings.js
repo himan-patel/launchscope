@@ -61,6 +61,8 @@ import { resolveBudgets } from './analyze/budgets.js';
  *   call API endpoints directly, without a browser (`launchscope api`).
  * @property {import('./discover/openapi.js').ApiOperation[]} endpoints Endpoints listed with
  *   `--endpoint` or `perf.endpoints`, measured directly over HTTP. Writes carry their body.
+ * @property {string[]} imports Absolute paths of HAR files to import requests from.
+ * @property {boolean} importWrites Also import recorded POST/PUT/PATCH requests, with their bodies.
  * @property {string | undefined} openapi 'auto', an http(s) URL, or an absolute path to an OpenAPI document (JSON or YAML).
  * @property {string | undefined} repo Absolute path of an app repository to read routes from.
  * @property {Record<string, string>} routeParams Values for dynamic route segments, by parameter name.
@@ -138,6 +140,8 @@ export const CONFIG_KEYS = new Set([
   'baseline',
   'traceContext',
   'endpoints',
+  'import',
+  'importWrites',
   'openapi',
   'repo',
   'routeParams',
@@ -187,6 +191,8 @@ export const STRESS_CONFIG_KEYS = new Set([
  * @property {boolean} [traceContext]
  * @property {string} [traceUrl]
  * @property {string[]} [endpoint]
+ * @property {string[]} [import]
+ * @property {boolean} [importWrites]
  * @property {string} [openapi]
  * @property {string} [repo]
  * @property {boolean} [spa]
@@ -223,10 +229,13 @@ export function resolvePerfSettings({ target, cli, config, cwd, mode = 'pages' }
   const routes = mode === 'api' ? [] : parseRoutes(cli.routes ?? section.routes, targetUrl);
   const endpoints = parseEndpoints(cli.endpoint ?? section.endpoints, targetUrl, cwd);
   const repo = resolveRepo(cli.repo ?? section.repo, cwd);
+  const imports = parseImports(cli.import ?? section.import, cwd);
   // With nothing listed, `launchscope api` looks for a spec at the usual locations.
   const openapi =
     resolveOpenApi(cli.openapi ?? section.openapi, cwd) ??
-    (mode === 'api' && endpoints.length === 0 && repo === undefined ? 'auto' : undefined);
+    (mode === 'api' && endpoints.length === 0 && imports.length === 0 && repo === undefined
+      ? 'auto'
+      : undefined);
   const storageState = cli.storageState ?? optionalString(section.storageState, 'storageState');
 
   return {
@@ -284,6 +293,8 @@ export function resolvePerfSettings({ target, cli, config, cwd, mode = 'pages' }
     baseline: resolveBaseline(cli.baseline ?? section.baseline, cwd),
     traceContext: resolveTraceContext(cli, section.traceContext),
     endpoints,
+    imports,
+    importWrites: parseBoolean(cli.importWrites ?? section.importWrites, 'importWrites', false),
     openapi,
     repo,
     routeParams: parseRouteParams(section.routeParams),
@@ -885,6 +896,23 @@ function resolveOpenApi(value, cwd) {
   }
   if (value === 'auto' || /^https?:\/\//i.test(value)) return value;
   return resolve(cwd, value);
+}
+
+/**
+ * @param {unknown} value One path or a list of paths.
+ * @param {string} cwd
+ * @returns {string[]} Absolute paths.
+ */
+function parseImports(value, cwd) {
+  if (value === undefined) return [];
+  const items = typeof value === 'string' ? [value] : value;
+  if (
+    !Array.isArray(items) ||
+    !items.every((item) => typeof item === 'string' && item.trim() !== '')
+  ) {
+    throw new UsageError('Imports must be paths to HAR files.');
+  }
+  return [...new Set(items.map((item) => resolve(cwd, item)))];
 }
 
 /**

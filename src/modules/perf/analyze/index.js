@@ -71,7 +71,7 @@ export class RunAccumulator {
    *
    * @param {Array<{ requests: import('../capture/network-recorder.js').RequestRecord[] }>} loads
    * @param {string} origin
-   * @param {'listed' | 'openapi' | 'repo'} [source]
+   * @param {'listed' | 'imported' | 'openapi' | 'repo'} [source]
    */
   addApiLoads(loads, origin, source = 'openapi') {
     for (const load of loads) {

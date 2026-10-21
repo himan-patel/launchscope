@@ -51,6 +51,7 @@ src/modules/perf/
 ├── discover/
 │   ├── routes.js         Breadth-first route queue, sitemap reader, URL filtering.
 │   ├── openapi.js        OpenAPI/Swagger JSON or YAML → safe GET operations.
+│   ├── imports.js        Recorded requests (HAR) → API operations, without their credentials.
 │   ├── repo.js           Routes from file-based framework conventions.
 │   └── code-routes.js    Angular, React Router, and Express routes from parsed source, across files.
 ├── capture/

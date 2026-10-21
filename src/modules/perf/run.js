@@ -145,9 +145,11 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
   });
   if (settings.mode === 'api' && !signal.aborted && (api?.operations.length ?? 0) === 0) {
     throw new UsageError('No API endpoints to measure.', {
-      hint: settings.openapi
-        ? 'The OpenAPI spec had no callable GET operations. List endpoints with --endpoint "/api/health".'
-        : 'List endpoints with --endpoint "/api/health" or point --openapi at a spec.',
+      hint: settings.imports.length
+        ? 'No imported request was an API call on the target origin; imports.json lists why (writes need --import-writes).'
+        : settings.openapi
+          ? 'The OpenAPI spec had no callable GET operations. List endpoints with --endpoint "/api/health".'
+          : 'List endpoints with --endpoint "/api/health", import a HAR file with --import, or point --openapi at a spec.',
     });
   }
   const navigation =
@@ -260,6 +262,13 @@ async function measureAndReport({ settings, runtime, perfDirectory, baseline, si
           title: api.plan.title,
           measured: api.plan.operations.length,
           skipped: api.plan.skipped,
+        }
+      : null,
+    imports: api?.imports
+      ? {
+          sources: api.imports.sources,
+          measured: api.imports.operations.length,
+          skipped: api.imports.skipped,
         }
       : null,
     repo: repo
