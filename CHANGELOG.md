@@ -20,6 +20,17 @@ All notable changes to this project are documented here. The format follows
   `--runs` times because they were listed, with a console warning; under `--stress` they are
   replayed only when their path matches `--stress-replay` (now also on `launchscope api`).
   Bodies are capped at 1 MB and never written to reports. DELETE is always refused.
+- New and reused connections: each run calls a directly measured endpoint on a new connection
+  and then again on the same, reused one (writes only once). Endpoints gain `newConnectionMs`,
+  `reusedConnectionMs`, and `connectionSetup` (median DNS, TCP connect, TLS); the report and
+  `endpoints.csv` show both medians; a `connection-setup` finding fires past the new
+  `connectionSetupMs` budget (200 ms warning, 600 ms critical).
+
+### Changed
+
+- Direct API calls are timed with Node's HTTP client instead of `fetch`, so DNS, TCP connect, and
+  TLS are reported separately instead of together as "connect". Redirects are followed only on
+  the target origin. Call counts per endpoint double (a new and a reused connection per run).
 
 ## [0.4.0] - 2026-10-19
 

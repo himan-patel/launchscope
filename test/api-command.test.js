@@ -69,7 +69,9 @@ describe('launchscope api', () => {
 
     const unlinked = endpoint('/api/unlinked');
     assert.deepEqual(unlinked.discoveredBy, ['listed']);
-    assert.equal(unlinked.calls, 3, 'once per run');
+    assert.equal(unlinked.calls, 6, 'a new and a reused connection per run');
+    assert.equal(unlinked.newConnectionMs.count, 3);
+    assert.equal(unlinked.reusedConnectionMs.count, 3);
     assert.ok(unlinked.durationMs.p50 >= 100, `p50 ${unlinked.durationMs.p50}`);
     assert.ok(unlinked.waitMs.p50 >= 100, 'server wait recorded');
     assert.deepEqual(endpoint('/api/me').discoveredBy, ['listed']);

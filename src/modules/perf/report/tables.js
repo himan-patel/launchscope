@@ -92,6 +92,8 @@ export function endpointsCsv(endpoints) {
       'discovered_by',
       'status_counts',
       'server_timing',
+      'new_connection_p50_ms',
+      'reused_connection_p50_ms',
     ],
     endpoints.map((endpoint) => [
       endpoint.key,
@@ -120,6 +122,8 @@ export function endpointsCsv(endpoints) {
         .map(([status, count]) => `${status}:${count}`)
         .join(' '),
       endpoint.serverTiming.map((metric) => `${metric.name}:${metric.meanMs}`).join(' '),
+      endpoint.newConnectionMs?.p50,
+      endpoint.reusedConnectionMs?.p50,
     ]),
   );
 }

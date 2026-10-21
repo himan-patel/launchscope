@@ -45,6 +45,10 @@ const TOKEN = /^(?=.*\d)(?=.*[a-z])[A-Za-z0-9_-]{24,}$/;
  * @property {Distribution | null} downloadMs
  * @property {Distribution | null} transferBytes
  * @property {Distribution | null} bodyBytes
+ * @property {Distribution | null} newConnectionMs Duration of calls that opened a new connection.
+ * @property {Distribution | null} reusedConnectionMs Duration of calls on a reused connection.
+ * @property {{ dnsMs: number, connectMs: number, tlsMs: number } | null} connectionSetup Median
+ *   DNS, TCP connect, and TLS time of calls that opened a new connection.
  * @property {Record<string, number>} statusCounts
  * @property {number} failures Network failures plus 4xx/5xx responses.
  * @property {number} redirects Calls that went through at least one redirect.
@@ -93,7 +97,7 @@ export function templatePath(pathname) {
  * routes never has to keep every request of every load in memory at once.
  */
 export class EndpointAccumulator {
-  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'serverTiming' | 'routes' | 'discoveredBy'>, routes: Set<string>, sources: Set<'page' | 'listed' | 'openapi' | 'repo'>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], timings: Map<string, number[]> }>} */
+  /** @type {Map<string, { meta: Omit<EndpointSummary, 'durationMs' | 'waitMs' | 'downloadMs' | 'transferBytes' | 'bodyBytes' | 'newConnectionMs' | 'reusedConnectionMs' | 'connectionSetup' | 'serverTiming' | 'routes' | 'discoveredBy'>, routes: Set<string>, sources: Set<'page' | 'listed' | 'openapi' | 'repo'>, durations: number[], waits: number[], downloads: number[], transfers: number[], bodies: number[], fresh: number[], reused: number[], setup: { dns: number[], connect: number[], tls: number[] }, timings: Map<string, number[]> }>} */
   #groups = new Map();
 
   /**
@@ -146,6 +150,9 @@ export class EndpointAccumulator {
           downloads: [],
           transfers: [],
           bodies: [],
+          fresh: [],
+          reused: [],
+          setup: { dns: [], connect: [], tls: [] },
           timings: new Map(),
         };
         groups.set(key, group);
@@ -187,6 +194,14 @@ export class EndpointAccumulator {
           group.waits.push(request.phases.waitMs);
           group.downloads.push(request.phases.downloadMs);
         }
+        if (!request.fromCache && !request.fromServiceWorker) {
+          (request.connectionReused ? group.reused : group.fresh).push(request.durationMs);
+          if (!request.connectionReused && request.phases) {
+            group.setup.dns.push(request.phases.dnsMs);
+            group.setup.connect.push(request.phases.connectMs);
+            group.setup.tls.push(request.phases.tlsMs);
+          }
+        }
       }
       for (const metric of parseServerTiming(request.headers['server-timing'])) {
         if (metric.durationMs === null) continue;
@@ -221,6 +236,16 @@ export class EndpointAccumulator {
         downloadMs: summarize(group.downloads),
         transferBytes: summarize(group.transfers),
         bodyBytes: summarize(group.bodies),
+        newConnectionMs: summarize(group.fresh),
+        reusedConnectionMs: summarize(group.reused),
+        connectionSetup:
+          group.setup.dns.length > 0
+            ? {
+                dnsMs: summarize(group.setup.dns)?.p50 ?? 0,
+                connectMs: summarize(group.setup.connect)?.p50 ?? 0,
+                tlsMs: summarize(group.setup.tls)?.p50 ?? 0,
+              }
+            : null,
         serverTiming: [...group.timings].map(([name, samples]) => ({
           name,
           samples: samples.length,

@@ -16,7 +16,7 @@ export function writeRunHeader(settings, logger) {
   logger.info(`Target   ${logger.paint.cyan(settings.targetUrl.href)} (${settings.scope})`);
   if (settings.mode === 'api') {
     logger.info(
-      `Plan     ${settings.runs} run(s) per endpoint, no browser, timeout ${formatDuration(settings.timeoutMs)}` +
+      `Plan     ${settings.runs} run(s) per endpoint (a new connection, then a reused one), no browser, timeout ${formatDuration(settings.timeoutMs)}` +
         (settings.storageStatePath ? ', signed in via storage state' : ''),
     );
     return;

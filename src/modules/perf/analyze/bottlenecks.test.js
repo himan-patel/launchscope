@@ -73,6 +73,9 @@ function endpoint(overrides = {}) {
     maxCallsPerLoad: 1,
     maxIdenticalCallsPerLoad: 1,
     durationMs: summarize([50, 55, 60, 52, 58]),
+    newConnectionMs: null,
+    reusedConnectionMs: null,
+    connectionSetup: null,
     waitMs: summarize([40, 40, 40, 40, 40]),
     downloadMs: summarize([5, 5, 5, 5, 5]),
     transferBytes: summarize([500]),
@@ -161,6 +164,35 @@ describe('detectBottlenecks', () => {
     assert.equal(finding.rule, 'failing-endpoint');
     assert.equal(finding.severity, 'critical');
     assert.match(finding.detail, /502×2/);
+  });
+
+  it('flags slow connection setup instead of instability', () => {
+    const findings = detect({
+      endpoints: [
+        endpoint({
+          durationMs: summarize([60, 62, 58, 61, 59, 420, 410, 430, 400, 415]),
+          newConnectionMs: summarize([420, 410, 430, 400, 415]),
+          reusedConnectionMs: summarize([60, 62, 58, 61, 59]),
+          connectionSetup: { dnsMs: 40, connectMs: 120, tlsMs: 190 },
+        }),
+      ],
+    });
+    const setup = findings.find((finding) => finding.rule === 'connection-setup');
+    assert.ok(setup);
+    assert.equal(setup.severity, 'warning');
+    assert.match(setup.title, /takes 355 ms longer on a new connection/);
+    assert.match(setup.detail, /TLS 190 ms/);
+    assert.ok(!findings.some((finding) => finding.rule === 'unstable-endpoint'));
+
+    const quick = detect({
+      endpoints: [
+        endpoint({
+          newConnectionMs: summarize([70, 72]),
+          reusedConnectionMs: summarize([60, 61]),
+        }),
+      ],
+    });
+    assert.ok(!quick.some((finding) => finding.rule === 'connection-setup'));
   });
 
   it('flags unstable latency when p95 is far above p50', () => {

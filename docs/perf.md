@@ -178,8 +178,8 @@ parameters need an `example`, `examples`, `default`, or `enum` value; operations
 all non-GET or deprecated operations, are listed as skipped instead of being called with
 invented input. Results join the endpoint statistics and findings (the report marks endpoints as
 "page", "API spec only", or both), are replayed by `--stress`, and are listed in `openapi.json`.
-DNS, connect, and TLS are reported together as "connect" for these direct calls. YAML specs are
-not supported yet.
+YAML specs are not supported yet. See
+[New and reused connections](#new-and-reused-connections) for how direct calls are timed.
 
 ### Measure an API without a browser
 
@@ -207,6 +207,19 @@ earlier page runs.
 
 `launchscope perf --endpoint <spec>` measures listed endpoints alongside the pages; the report
 marks them "listed".
+
+#### New and reused connections
+
+Every direct call (listed, OpenAPI, or repository endpoints, in both commands) is timed with
+Node's HTTP client, so DNS, TCP connect, TLS, sending, server wait, and download are measured
+separately. Each run calls an endpoint twice on its own connection: first on a **new
+connection** (DNS, TCP, and TLS included), then again on the **same, reused connection**. A
+listed write is only sent the first time, so it is still sent once per run. The endpoints table
+shows both medians ("New / reused conn. p50"), `endpoints.csv` adds `new_connection_p50_ms` and
+`reused_connection_p50_ms`, and a `connection-setup` finding fires when the difference crosses
+the `connectionSetupMs` budget, with the DNS, connect, and TLS medians as evidence. Durations,
+percentiles, and call counts include both calls. Redirects are followed only on the target
+origin, so headers and cookies never go to another host, and certificates are always validated.
 
 #### Write endpoints (POST, PUT, PATCH)
 
@@ -519,7 +532,8 @@ includes the numbers it is based on and a recommendation.
 | `route-status`                                                                | warning / critical (5xx)   | the page document returned 4xx/5xx                                                                               |
 | `vitals-lcpMs`, `vitals-fcpMs`, `vitals-ttfbMs`, `vitals-cls`, `vitals-tbtMs` | budget                     | the median crosses the budget                                                                                    |
 | `slow-endpoint`                                                               | budget                     | an API call's p95 duration or median server wait crosses the budget; names the largest `Server-Timing` component |
-| `unstable-endpoint`                                                           | info                       | p95 ≥ 2.5× p50 over at least 5 calls                                                                             |
+| `unstable-endpoint`                                                           | info                       | p95 ≥ 2.5× p50 over at least 5 calls (not reported when `connection-setup` explains the spread)                  |
+| `connection-setup`                                                            | budget                     | median time on a new connection minus on a reused one crosses `connectionSetupMs` (at least 2 calls each)        |
 | `large-payload`                                                               | budget                     | median decoded API response size crosses the budget                                                              |
 | `oversized-collection`                                                        | budget                     | a JSON response contains an array longer than the budget                                                         |
 | `uncompressed`                                                                | info / warning (≥ 100 KB)  | a text response ≥ 1.4 KB has no content encoding                                                                 |
@@ -764,23 +778,24 @@ Budgets turn measurements into findings. Each has a `warning` and a `critical` l
 number sets the warning level and keeps the default critical level. Web Vitals defaults follow
 Google's published "good / poor" boundaries.
 
-| Budget            | Measures                          | Warning | Critical |
-| ----------------- | --------------------------------- | ------- | -------- |
-| `lcpMs`           | median LCP                        | 2500    | 4000     |
-| `fcpMs`           | median FCP                        | 1800    | 3000     |
-| `ttfbMs`          | median document TTFB              | 800     | 1800     |
-| `cls`             | median CLS                        | 0.1     | 0.25     |
-| `tbtMs`           | median TBT                        | 200     | 600      |
-| `apiP95Ms`        | API call p95 duration             | 500     | 1500     |
-| `serverWaitMs`    | API median server wait            | 300     | 1000     |
-| `apiPayloadBytes` | median decoded API response       | 512000  | 2097152  |
-| `jsonArrayItems`  | longest JSON array                | 200     | 1000     |
-| `chainLength`     | calls in the longest API chain    | 3       | 5        |
-| `pageWeightBytes` | median transferred bytes per load | 2097152 | 5242880  |
-| `requestCount`    | median requests per load          | 100     | 200      |
-| `duplicateCalls`  | identical calls in one load       | 2       | 4        |
-| `stressP95Ms`     | p95 at the last stress stage      | 1000    | 3000     |
-| `stressErrorRate` | error ratio at any stress stage   | 0.01    | 0.05     |
+| Budget              | Measures                          | Warning | Critical |
+| ------------------- | --------------------------------- | ------- | -------- |
+| `lcpMs`             | median LCP                        | 2500    | 4000     |
+| `fcpMs`             | median FCP                        | 1800    | 3000     |
+| `ttfbMs`            | median document TTFB              | 800     | 1800     |
+| `cls`               | median CLS                        | 0.1     | 0.25     |
+| `tbtMs`             | median TBT                        | 200     | 600      |
+| `apiP95Ms`          | API call p95 duration             | 500     | 1500     |
+| `serverWaitMs`      | API median server wait            | 300     | 1000     |
+| `connectionSetupMs` | new minus reused connection, p50  | 200     | 600      |
+| `apiPayloadBytes`   | median decoded API response       | 512000  | 2097152  |
+| `jsonArrayItems`    | longest JSON array                | 200     | 1000     |
+| `chainLength`       | calls in the longest API chain    | 3       | 5        |
+| `pageWeightBytes`   | median transferred bytes per load | 2097152 | 5242880  |
+| `requestCount`      | median requests per load          | 100     | 200      |
+| `duplicateCalls`    | identical calls in one load       | 2       | 4        |
+| `stressP95Ms`       | p95 at the last stress stage      | 1000    | 3000     |
+| `stressErrorRate`   | error ratio at any stress stage   | 0.01    | 0.05     |
 
 ## Use in CI
 

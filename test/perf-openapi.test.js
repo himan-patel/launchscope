@@ -66,7 +66,7 @@ describe('launchscope perf --openapi', () => {
     assert.ok(unlinked, 'unlinked endpoint measured');
     assert.deepEqual(unlinked.discoveredBy, ['openapi']);
     assert.deepEqual(unlinked.routes, []);
-    assert.equal(unlinked.calls, 2, 'once per run');
+    assert.equal(unlinked.calls, 4, 'a new and a reused connection per run');
     assert.ok(unlinked.durationMs.p50 >= 100, `p50 ${unlinked.durationMs.p50}`);
     assert.ok(unlinked.waitMs.p50 >= 100, 'server wait recorded from resource timing');
 
