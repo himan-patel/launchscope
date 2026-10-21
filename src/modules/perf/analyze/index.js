@@ -67,11 +67,11 @@ export class RunAccumulator {
   }
 
   /**
-   * Folds in API operations measured directly (from an OpenAPI document or the repository).
+   * Folds in API operations measured directly (listed, from an OpenAPI document, or from the repository).
    *
    * @param {Array<{ requests: import('../capture/network-recorder.js').RequestRecord[] }>} loads
    * @param {string} origin
-   * @param {'openapi' | 'repo'} [source]
+   * @param {'listed' | 'openapi' | 'repo'} [source]
    */
   addApiLoads(loads, origin, source = 'openapi') {
     for (const load of loads) {

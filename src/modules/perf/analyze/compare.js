@@ -82,20 +82,26 @@ const ENDPOINT_METRICS = [
  */
 
 /**
- * Locates and reads a baseline summary. `reference` may be `latest` (the newest earlier run for
- * the same host in the output directory), a `summary.json` file, a `perf/` directory, or a run
+ * Locates and reads a baseline summary. `reference` may be `latest` (the newest earlier run of
+ * the same mode for the same host in the output directory), a `summary.json` file, a `perf/` directory, or a run
  * directory.
  *
  * @param {object} options
  * @param {string} options.reference
  * @param {string} options.outputDirectory Absolute base directory for runs.
  * @param {string} options.currentRunDirectory Excluded when looking for `latest`.
+ * @param {'pages' | 'api'} [options.mode] `latest` only matches runs of this mode.
  * @returns {Promise<{ path: string, summary: any } | null>} Null when `latest` finds nothing.
  */
-export async function loadBaseline({ reference, outputDirectory, currentRunDirectory }) {
+export async function loadBaseline({
+  reference,
+  outputDirectory,
+  currentRunDirectory,
+  mode = 'pages',
+}) {
   let path;
   if (reference === 'latest') {
-    path = await findLatestSummary(outputDirectory, currentRunDirectory);
+    path = await findLatestSummary(outputDirectory, currentRunDirectory, mode);
     if (!path) return null;
   } else {
     path = await resolveSummaryPath(reference);
@@ -142,9 +148,10 @@ async function resolveSummaryPath(reference) {
 /**
  * @param {string} outputDirectory
  * @param {string} currentRunDirectory
+ * @param {'pages' | 'api'} mode Only runs of the same kind are comparable.
  * @returns {Promise<string | null>}
  */
-async function findLatestSummary(outputDirectory, currentRunDirectory) {
+async function findLatestSummary(outputDirectory, currentRunDirectory, mode) {
   const current = basename(currentRunDirectory);
   const host = current.replace(RUN_SUFFIX, '');
   let entries;
@@ -163,7 +170,8 @@ async function findLatestSummary(outputDirectory, currentRunDirectory) {
     const candidate = join(resolve(outputDirectory), name, 'perf', 'summary.json');
     try {
       const summary = JSON.parse(await readFile(candidate, 'utf8'));
-      if (!summary.interrupted) return candidate;
+      // Runs from before `launchscope api` existed have no mode; they measured pages.
+      if (!summary.interrupted && (summary.mode ?? 'pages') === mode) return candidate;
     } catch {
       // Not a completed perf run; keep looking.
     }

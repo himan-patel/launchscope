@@ -6,6 +6,17 @@ All notable changes to this project are documented here. The format follows
 
 ## [Unreleased]
 
+### Added
+
+- `launchscope api <target>`: measures API endpoints directly over HTTP, with no browser. Endpoints
+  come from `--endpoint` (repeatable), an OpenAPI spec (found automatically when nothing is
+  listed), or `--repo`, and get the same endpoint statistics, findings, budgets, stress test, k6
+  export, baseline comparison, `--fail-on`, and report as `launchscope perf`. Only GET endpoints
+  can be listed. Summaries gain `mode` (`pages` or `api`), and `--baseline latest` only compares
+  runs of the same mode.
+- `launchscope perf --endpoint <path>` and config `perf.endpoints`: also measure listed GET
+  endpoints directly; the report labels them "listed".
+
 ## [0.4.0] - 2026-10-19
 
 ### Added

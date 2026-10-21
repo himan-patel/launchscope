@@ -210,7 +210,9 @@ export function summaryMarkdown(summary) {
     '',
     `- **Target:** ${summary.target}`,
     `- **Started:** ${summary.startedAt}`,
-    `- **Measured:** ${summary.totals.routes} route(s), ${summary.totals.pageLoads} page load(s), ${summary.totals.endpoints} endpoint(s)`,
+    summary.mode === 'api'
+      ? `- **Measured:** ${summary.totals.endpoints} endpoint(s), ${summary.settings.runs} call(s) each, no browser`
+      : `- **Measured:** ${summary.totals.routes} route(s), ${summary.totals.pageLoads} page load(s), ${summary.totals.endpoints} endpoint(s)`,
     `- **Bottlenecks:** ${counts.critical} critical, ${counts.warning} warning, ${counts.info} info`,
     '',
     '## Bottlenecks',
@@ -224,16 +226,20 @@ export function summaryMarkdown(summary) {
       `  _Recommendation:_ ${md(finding.recommendation)}`,
     );
   }
+  if (summary.mode !== 'api') {
+    lines.push(
+      '',
+      '## Routes',
+      '',
+      '| Route | Status | TTFB | FCP | LCP | CLS | TBT | TTI | Requests | Transferred |',
+      '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
+      ...routes.map((route) => {
+        const m = route.metrics;
+        return `| ${md(routeLabel(route.url))} | ${route.error ? 'failed' : (route.status ?? '–')} | ${dur(m.ttfbMs?.p50)} | ${dur(m.fcpMs?.p50)} | ${dur(m.lcpMs?.p50)} | ${m.cls ? m.cls.p50.toFixed(3) : '–'} | ${dur(m.tbtMs?.p50)} | ${dur(m.ttiMs?.p50)} | ${m.requestCount ? Math.round(m.requestCount.p50) : '–'} | ${size(m.transferBytes?.p50)} |`;
+      }),
+    );
+  }
   lines.push(
-    '',
-    '## Routes',
-    '',
-    '| Route | Status | TTFB | FCP | LCP | CLS | TBT | TTI | Requests | Transferred |',
-    '| --- | --- | ---: | ---: | ---: | ---: | ---: | ---: | ---: | ---: |',
-    ...routes.map((route) => {
-      const m = route.metrics;
-      return `| ${md(routeLabel(route.url))} | ${route.error ? 'failed' : (route.status ?? '–')} | ${dur(m.ttfbMs?.p50)} | ${dur(m.fcpMs?.p50)} | ${dur(m.lcpMs?.p50)} | ${m.cls ? m.cls.p50.toFixed(3) : '–'} | ${dur(m.tbtMs?.p50)} | ${dur(m.ttiMs?.p50)} | ${m.requestCount ? Math.round(m.requestCount.p50) : '–'} | ${size(m.transferBytes?.p50)} |`;
-    }),
     '',
     '## Slowest endpoints',
     '',

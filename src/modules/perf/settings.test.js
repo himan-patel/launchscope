@@ -204,7 +204,63 @@ describe('open-model stress settings', () => {
   });
 });
 
+describe('endpoint settings', () => {
+  it('resolves listed endpoints against the target, GET by default, without duplicates', () => {
+    const settings = resolveWith({
+      cli: {
+        endpoint: ['/api/health', 'get /api/items?page=1', 'http://localhost:3000/api/health'],
+      },
+    });
+    assert.deepEqual(settings.endpoints, [
+      { url: 'http://localhost:3000/api/health', path: '/api/health', operationId: null },
+      { url: 'http://localhost:3000/api/items?page=1', path: '/api/items', operationId: null },
+    ]);
+    assert.equal(resolveWith({ config: { endpoints: ['/api/me'] } }).endpoints.length, 1);
+  });
+
+  it('refuses writes, other origins, and malformed entries', () => {
+    assert.throws(() => resolveWith({ cli: { endpoint: ['POST /api/orders'] } }), /only GET/);
+    assert.throws(
+      () => resolveWith({ cli: { endpoint: ['https://other.test/api'] } }),
+      /not on the target origin/,
+    );
+    assert.throws(() => resolveWith({ cli: { endpoint: ['GET /a /b'] } }), /must look like/);
+    assert.throws(() => resolveWith({ config: { endpoints: [42] } }), /must be strings/);
+  });
+});
+
+describe('api mode', () => {
+  it('turns off page-only features and looks for a spec when nothing is listed', () => {
+    const settings = resolveWith({
+      mode: 'api',
+      config: { routes: ['/about'], spa: true, lighthouse: true, browsers: 'chromium,firefox' },
+    });
+    assert.equal(settings.mode, 'api');
+    assert.deepEqual(settings.routes, []);
+    assert.equal(settings.sitemap, false);
+    assert.equal(settings.spa, false);
+    assert.equal(settings.lighthouse, false);
+    assert.deepEqual(settings.browsers, ['chromium']);
+    assert.equal(settings.openapi, 'auto');
+  });
+
+  it('does not guess a spec when endpoints are listed', () => {
+    const settings = resolveWith({ mode: 'api', cli: { endpoint: ['/api/me'] } });
+    assert.equal(settings.openapi, undefined);
+    assert.equal(resolveWith().mode, 'pages');
+    assert.equal(resolveWith().openapi, undefined);
+  });
+});
+
 describe('toReportableSettings', () => {
+  it('redacts query values of listed endpoints', () => {
+    const settings = resolveWith({ cli: { endpoint: ['/api/items?api_key=secret&page=2', '/x'] } });
+    assert.deepEqual(toReportableSettings(settings).endpoints, [
+      'http://localhost:3000/api/items?api_key=[redacted]&page=[redacted]',
+      'http://localhost:3000/x',
+    ]);
+  });
+
   it('redacts header values so secrets never reach report files', () => {
     const settings = resolveWith({ cli: { header: ['Authorization: Bearer secret-token'] } });
     const reportable = toReportableSettings(settings);

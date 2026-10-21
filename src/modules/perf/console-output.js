@@ -14,6 +14,13 @@ const MAX_FINDINGS_IN_CONSOLE = 10;
 export function writeRunHeader(settings, logger) {
   logger.banner();
   logger.info(`Target   ${logger.paint.cyan(settings.targetUrl.href)} (${settings.scope})`);
+  if (settings.mode === 'api') {
+    logger.info(
+      `Plan     ${settings.runs} run(s) per endpoint, no browser, timeout ${formatDuration(settings.timeoutMs)}` +
+        (settings.storageStatePath ? ', signed in via storage state' : ''),
+    );
+    return;
+  }
   logger.info(
     `Plan     ${settings.runs} cold run(s)${settings.warmRuns ? ` + ${settings.warmRuns} warm` : ''} per route, ` +
       `${settings.device}, throttle ${settings.throttle}, timeout ${formatDuration(settings.timeoutMs)}`,
